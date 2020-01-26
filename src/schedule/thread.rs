@@ -16,11 +16,15 @@ impl ThreadId {
         static NEXT_THREAD_ID: AtomicU64 = AtomicU64::new(1);
         ThreadId(NEXT_THREAD_ID.fetch_add(1, Ordering::SeqCst))
     }
+
+    fn as_u64(&self) -> u64 {
+        self.0
+    }
 }
 
-impl Into<u64> for ThreadId {
-    fn into(self) -> u64 {
-        self.0
+impl From<ThreadId> for u64 {
+    fn from(f: ThreadId) -> u64 {
+        f.as_u64()
     }
 }
 

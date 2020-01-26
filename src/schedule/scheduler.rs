@@ -81,4 +81,6 @@ impl Scheduler {
     pub fn current_thread_id(&self) -> ThreadId {
         self.current_thread_id
     }
+
+    pub(super) fn remove_thread(&mut self, id: ThreadId) {}
 }

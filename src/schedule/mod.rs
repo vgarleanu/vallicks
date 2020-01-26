@@ -59,8 +59,18 @@ where
 
     let thread = Thread::create_from_closure(
         || {
+            let thread_id = {
+                let lock = SCHEDULER.lock();
+                lock.as_ref().unwrap().current_thread_id()
+            };
+
             f();
-            // TODO: Inform scheduler that the task is done
+
+            {
+                let mut lock = SCHEDULER.lock();
+                lock.as_mut().unwrap().remove_thread(thread_id);
+            }
+
             loop {
                 x86_64::instructions::hlt()
             }
