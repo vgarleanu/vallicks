@@ -7,6 +7,7 @@
 #![feature(naked_functions)]
 #![feature(option_expect_none)]
 #![feature(raw)]
+#![feature(try_trait)]
 #![feature(never_type)]
 #![feature(global_asm)]
 #![test_runner(crate::test_runner)]

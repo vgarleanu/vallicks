@@ -1,4 +1,5 @@
 use crate::memory::BootInfoFrameAllocator;
+use crate::println;
 use crate::schedule::thread::{Thread, ThreadId};
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;
@@ -57,17 +58,16 @@ impl Scheduler {
         &mut self,
         paused_stack_pointer: VirtAddr,
         next_thread_id: ThreadId,
-    ) {
+    ) -> Result<(), core::option::NoneError> {
         let paused_thread_id = mem::replace(&mut self.current_thread_id, next_thread_id);
-        let paused_thread = self
-            .threads
-            .get_mut(&paused_thread_id)
-            .expect("paused thread does not exist");
+        let paused_thread = self.threads.get_mut(&paused_thread_id)?;
+
         paused_thread
             .stack_pointer()
             .replace(paused_stack_pointer)
             .expect_none("running thread should have stack pointer set to None");
         self.paused_threads.push_back(paused_thread_id);
+        Ok(())
     }
 
     pub fn add_new_thread(&mut self, thread: Thread) {
@@ -82,5 +82,10 @@ impl Scheduler {
         self.current_thread_id
     }
 
-    pub(super) fn remove_thread(&mut self, id: ThreadId) {}
+    pub(super) fn remove_thread(&mut self, id: ThreadId) {
+        println!("Removing thread: {:?}", id);
+        let thread = self.threads.remove(&id);
+        self.paused_threads.retain(|&x| x != id);
+        println!("Removed: {:?}", thread);
+    }
 }
