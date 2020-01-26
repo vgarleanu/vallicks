@@ -1,4 +1,5 @@
 use crate::pit::tick as pit_tick;
+use crate::schedule::schedule;
 use crate::{gdt, hlt_loop, print, println};
 #[cfg(test)]
 use crate::{sprint, sprintln};
@@ -112,6 +113,7 @@ extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
     unsafe {
         PICS.lock().notify_end_of_interrupt(32);
     }
+    schedule();
 }
 
 #[test_case]

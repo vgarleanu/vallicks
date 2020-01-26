@@ -2,7 +2,7 @@ use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
-        FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags as Flags,
+        mapper, FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags as Flags,
         PhysFrame, Size4KiB, UnusedPhysFrame,
     },
     PhysAddr, VirtAddr,
@@ -70,4 +70,52 @@ unsafe fn active_l4_table(physical_mem_offset: VirtAddr) -> &'static mut PageTab
     let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
 
     &mut *page_table_ptr
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StackBounds {
+    start: VirtAddr,
+    end: VirtAddr,
+}
+
+impl StackBounds {
+    pub fn start(&self) -> VirtAddr {
+        self.start
+    }
+
+    pub fn end(&self) -> VirtAddr {
+        self.end
+    }
+}
+
+pub fn alloc_stack(
+    size_in_pages: u64,
+    mapper: &mut impl Mapper<Size4KiB>,
+    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+) -> Result<StackBounds, mapper::MapToError> {
+    use core::sync::atomic::{AtomicU64, Ordering};
+    use x86_64::structures::paging::PageTableFlags as Flags;
+
+    static STACK_ALLOC_NEXT: AtomicU64 = AtomicU64::new(0x_5555_5555_0000);
+
+    let guard_page_start = STACK_ALLOC_NEXT.fetch_add(
+        (size_in_pages + 1) * Page::<Size4KiB>::SIZE,
+        Ordering::SeqCst,
+    );
+    let guard_page = Page::from_start_address(VirtAddr::new(guard_page_start))
+        .expect("`STACK_ALLOC_NEXT` not page aligned");
+
+    let stack_start = guard_page + 1;
+    let stack_end = stack_start + size_in_pages;
+    let flags = Flags::PRESENT | Flags::WRITABLE;
+    for page in Page::range(stack_start, stack_end) {
+        let frame = frame_allocator
+            .allocate_frame()
+            .ok_or(mapper::MapToError::FrameAllocationFailed)?;
+        mapper.map_to(page, frame, flags, frame_allocator)?.flush();
+    }
+    Ok(StackBounds {
+        start: stack_start.start_address(),
+        end: stack_end.start_address(),
+    })
 }

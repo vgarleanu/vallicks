@@ -4,6 +4,11 @@
 #![feature(custom_test_frameworks)]
 #![feature(asm)]
 #![feature(alloc_error_handler)]
+#![feature(naked_functions)]
+#![feature(option_expect_none)]
+#![feature(raw)]
+#![feature(never_type)]
+#![feature(global_asm)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -25,10 +30,12 @@ pub mod gdt;
 pub mod interrupts;
 pub mod memory;
 pub mod pit;
+pub mod schedule;
 pub mod serial;
 pub mod vga;
 
 use crate::memory::{init as __meminit, BootInfoFrameAllocator};
+use crate::schedule::init_scheduler;
 use x86_64::{structures::paging::Page, VirtAddr};
 
 #[global_allocator]
@@ -60,7 +67,12 @@ pub fn init(boot_info: &'static BootInfo) {
     memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("Failed to initialize heap");
 
+    init_scheduler(mapper, frame_allocator);
+
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
+}
+
+pub fn activate_sch() {
     pit::init();
 }
 

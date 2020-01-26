@@ -9,25 +9,46 @@ extern crate alloc;
 
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
+use rust_kernel::schedule as thread;
 #[cfg(test)]
 use rust_kernel::{exit, ExitCode};
-use rust_kernel::{hlt_loop, println, sprintln};
+use rust_kernel::{hlt_loop, print, println, sprintln};
 
 entry_point!(__kmain);
 
 fn function() {
-    println!("Function");
-    hlt_loop();
+    let mut counter = 0u8;
+    loop {
+        if counter == 4 {
+            break;
+        }
+        println!("Hello from thread 1 cnt: {}", counter);
+        counter += 1;
+    }
+}
+
+fn function2() {
+    let mut counter = 1u8;
+    loop {
+        if counter == 6 {
+            break;
+        }
+        println!("Hello from thread 2 cnt: {}", counter);
+        counter += 1;
+    }
 }
 
 fn __kmain(boot_info: &'static BootInfo) -> ! {
     println!("Booting...");
     rust_kernel::init(boot_info);
-    function();
+
+    thread::spawn(function);
+    thread::spawn(function2);
+    rust_kernel::activate_sch();
+    println!("Booted...");
 
     #[cfg(test)]
     test_main();
-    println!("Booted...");
     hlt_loop();
 }
 
