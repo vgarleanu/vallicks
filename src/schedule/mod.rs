@@ -1,5 +1,6 @@
 use crate::memory::BootInfoFrameAllocator;
-use crate::println;
+use crate::pit::get_milis;
+use crate::prelude::*;
 use crate::schedule::scheduler::Scheduler;
 use spin::Mutex;
 use x86_64::structures::paging::mapper::OffsetPageTable;
@@ -35,6 +36,18 @@ pub(crate) fn schedule() {
     let next = SCHEDULER
         .try_lock()
         .and_then(|mut scheduler| scheduler.as_mut().and_then(|s| s.schedule()));
+    if let Some((next_id, next_stack_pointer)) = next {
+        // We dont actually care if theres no paused thread
+        unsafe {
+            let _ = context_switch_to(next_id, next_stack_pointer);
+        };
+    }
+}
+
+pub(crate) fn force_schedule() {
+    let mut lock = SCHEDULER.lock();
+    let next = lock.as_mut().and_then(|s| s.schedule());
+
     if let Some((next_id, next_stack_pointer)) = next {
         // We dont actually care if theres no paused thread
         unsafe {
@@ -93,4 +106,20 @@ pub fn current() -> ThreadId {
     }
 
     slock.as_mut().unwrap().current_thread_id()
+}
+
+pub fn sleep(milis: u64) {
+    /*
+     * FIXME: Currently using a primitive style sleep instead of rescheduling
+    let mut slock = SCHEDULER.lock();
+    slock.as_mut().unwrap().park_current(milis);
+    force_schedule();
+    */
+
+    let last_milis = get_milis();
+    loop {
+        if get_milis() > milis + last_milis {
+            break;
+        }
+    }
 }

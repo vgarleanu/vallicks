@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use crate::println;
+use crate::prelude::*;
+use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 use x86_64::instructions::port::Port;
 
@@ -14,15 +15,16 @@ const PIT_REG: u16 = 0x43; // Mode/Command register (write only, a read is ignor
 // time_between = 1/actual_freq = 0.0009998474667 s ~= 999.847467 ns
 // floats are disabled in kernel code, so these are calculated by hand
 #[allow(dead_code)]
-const TARGET_FREQ: u64 = 100; // Hz
+const TARGET_FREQ: u64 = 150; // Hz
 const RELOAD_VALUE: u64 = 1193;
 
 pub const ACTUAL_FREQ_E_9: u64 = 1000_152556600; // Hz * 10 ** 12
 pub const TIME_BETWEEN_E_12: u64 = 999847467; // s * 10 ** 12
+pub const TIME_BETWEEN_E_6: u64 = 999;
 
 lazy_static::lazy_static! {
     static ref P_PIT1_CH0: Mutex<Port<u8>> = Mutex::new(Port::new(PIT_CH0));
-    static ref TICK: Mutex<u128> = Mutex::new(0);
+    static ref TICK: AtomicU64 = AtomicU64::new(0);
 }
 
 pub fn init() {
@@ -40,6 +42,16 @@ pub fn init() {
 }
 
 pub fn tick() {
-    let mut tick = TICK.lock();
-    *tick = tick.overflowing_add(1).0;
+    TICK.fetch_add(1, Ordering::SeqCst);
+    if TICK.load(Ordering::SeqCst) % 1000 == 0 {
+        get_secs();
+    }
+}
+
+pub fn get_secs() -> u64 {
+    TICK.load(Ordering::SeqCst) / TIME_BETWEEN_E_6
+}
+
+pub fn get_milis() -> u64 {
+    TICK.load(Ordering::SeqCst)
 }

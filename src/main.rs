@@ -9,6 +9,7 @@ extern crate alloc;
 
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
+use rust_kernel::pit::get_milis;
 use rust_kernel::prelude::*;
 
 entry_point!(__kmain);
@@ -17,13 +18,14 @@ fn function() {
     let mut counter = 0u8;
     let current_thread = thread::current();
     loop {
+        thread::sleep(5000);
         if counter == 4 {
             break;
         }
         println!(
             "Hello from thread {} cnt: {}",
             current_thread.as_u64(),
-            counter
+            get_milis()
         );
         counter += 1;
     }
@@ -50,11 +52,7 @@ fn __kmain(boot_info: &'static BootInfo) -> ! {
     rust_kernel::init(boot_info);
 
     thread::spawn(function);
-    thread::spawn(function2);
-    thread::spawn(function2);
-    thread::spawn(|| {
-        println!("Hello from closure");
-    });
+
     println!("Booted...");
 
     #[cfg(test)]

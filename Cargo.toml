@@ -23,6 +23,7 @@ pic8259_simple = "0.1.1"
 pc-keyboard = "0.5.0"
 linked_list_allocator = "0.6.4"
 fringe = { git = "https://github.com/edef1c/libfringe", no-deafult-features = true, features = ["alloc"] }
+menu = "0.3.2"
 
 [profile.dev]
 panic = "abort"

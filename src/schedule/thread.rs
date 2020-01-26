@@ -30,6 +30,7 @@ impl From<ThreadId> for u64 {
 #[derive(Debug)]
 pub struct Thread {
     id: ThreadId,
+    pub parked: Option<(u64, u64)>,
     stack_pointer: Option<VirtAddr>,
     stack_bounds: Option<StackBounds>,
 }
@@ -51,6 +52,7 @@ impl Thread {
 
         Ok(Self {
             id: ThreadId::new(),
+            parked: None,
             stack_pointer: Some(stack.get_stack_pointer()),
             stack_bounds: Some(stack_bounds),
         })
@@ -59,6 +61,7 @@ impl Thread {
     pub fn create_root_thread() -> Self {
         Self {
             id: ThreadId(0),
+            parked: None,
             stack_pointer: None,
             stack_bounds: None,
         }

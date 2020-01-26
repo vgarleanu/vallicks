@@ -1,7 +1,4 @@
-use crate::schedule::schedule;
-use crate::{gdt, hlt_loop, print, println};
-#[cfg(test)]
-use crate::{sprint, sprintln};
+use crate::{gdt, pit::tick, prelude::*, schedule::schedule};
 use lazy_static::lazy_static;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pic8259_simple::ChainedPics;
@@ -71,7 +68,7 @@ extern "x86-interrupt" fn page_fault_handler(
     println!("Accessed Addr: {:?}", Cr2::read());
     println!("Err code: {:?}", error_code);
     println!("{:#?}", stack_frame);
-    hlt_loop();
+    halt();
 }
 
 extern "x86-interrupt" fn double_fault_handler(
@@ -109,6 +106,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 
 // TODO: Add our scheduler invocation here
 extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
+    tick();
     unsafe {
         PICS.lock().notify_end_of_interrupt(32);
     }

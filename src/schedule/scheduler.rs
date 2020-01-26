@@ -1,3 +1,5 @@
+use crate::pit::get_milis;
+use crate::prelude::*;
 use crate::schedule::thread::{Thread, ThreadId};
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;
@@ -36,10 +38,20 @@ impl Scheduler {
                 .threads
                 .get_mut(&next_id)
                 .expect("next thread does not exist");
+
+            if let Some((parked_at, for_milis)) = next_thread.parked {
+                if get_milis() < parked_at + for_milis {
+                    self.paused_threads.push_back(next_id);
+                    return None;
+                }
+                println!("Unparked");
+                next_thread.parked = None;
+            }
             let next_stack_pointer = next_thread
                 .stack_pointer()
                 .take()
                 .expect("paused thread has no stack pointer");
+
             Some((next_id, next_stack_pointer))
         } else {
             None
@@ -77,5 +89,11 @@ impl Scheduler {
     pub(super) fn remove_thread(&mut self, id: ThreadId) {
         let _thread = self.threads.remove(&id);
         self.paused_threads.retain(|&x| x != id);
+    }
+
+    pub(super) fn park_current(&mut self, milis: u64) {
+        let current_milis = get_milis();
+        let mut thread = self.threads.get_mut(&self.current_thread_id).unwrap();
+        thread.parked = Some((current_milis, milis));
     }
 }
