@@ -52,6 +52,9 @@ fn __kmain(boot_info: &'static BootInfo) -> ! {
     thread::spawn(function);
     thread::spawn(function2);
     thread::spawn(function2);
+    thread::spawn(|| {
+        println!("Hello from closure");
+    });
     println!("Booted...");
 
     #[cfg(test)]

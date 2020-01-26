@@ -60,7 +60,7 @@ where
     let mapper = mlock.as_mut();
     let alloc = alock.as_mut();
 
-    let thread = Thread::create_from_closure(
+    let thread = Thread::new(
         || {
             let thread_id = {
                 let lock = SCHEDULER.lock();

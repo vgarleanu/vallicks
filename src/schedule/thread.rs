@@ -35,21 +35,7 @@ pub struct Thread {
 }
 
 impl Thread {
-    pub fn create(
-        entry_point: fn() -> !,
-        stack_size: u64,
-        mapper: &mut impl Mapper<Size4KiB>,
-        frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-    ) -> Result<Self, mapper::MapToError> {
-        let stack_bounds = alloc_stack(stack_size, mapper, frame_allocator)?;
-        let mut stack = unsafe { Stack::new(stack_bounds.end()) };
-
-        stack.set_up_for_entry_point(entry_point);
-
-        Ok(Self::new(stack.get_stack_pointer(), stack_bounds))
-    }
-
-    pub fn create_from_closure<F>(
+    pub fn new<F>(
         closure: F,
         stack_size: u64,
         mapper: &mut impl Mapper<Size4KiB>,
@@ -63,19 +49,15 @@ impl Thread {
 
         stack.set_up_for_closure(Box::new(closure));
 
-        Ok(Self::new(stack.get_stack_pointer(), stack_bounds))
-    }
-
-    fn new(stack_pointer: VirtAddr, stack_bounds: StackBounds) -> Self {
-        Thread {
+        Ok(Self {
             id: ThreadId::new(),
-            stack_pointer: Some(stack_pointer),
+            stack_pointer: Some(stack.get_stack_pointer()),
             stack_bounds: Some(stack_bounds),
-        }
+        })
     }
 
-    pub(super) fn create_root_thread() -> Self {
-        Thread {
+    pub fn create_root_thread() -> Self {
+        Self {
             id: ThreadId(0),
             stack_pointer: None,
             stack_bounds: None,
@@ -86,7 +68,7 @@ impl Thread {
         self.id
     }
 
-    pub(super) fn stack_pointer(&mut self) -> &mut Option<VirtAddr> {
+    pub fn stack_pointer(&mut self) -> &mut Option<VirtAddr> {
         &mut self.stack_pointer
     }
 }

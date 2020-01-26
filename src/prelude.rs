@@ -1,11 +1,5 @@
 #[allow(unused_imports)]
-pub use crate::{
-    println,
-    print,
-    sprintln,
-    sprint,
-    hlt_loop as halt,
-};
+pub use crate::{hlt_loop as halt, print, println, sprint, sprintln};
 
 #[allow(unused_imports)]
 pub use crate::schedule as thread;
