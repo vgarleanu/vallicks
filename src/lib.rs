@@ -31,6 +31,7 @@ pub mod gdt;
 pub mod interrupts;
 pub mod memory;
 pub mod pit;
+pub mod prelude;
 pub mod schedule;
 pub mod serial;
 pub mod vga;
@@ -71,9 +72,6 @@ pub fn init(boot_info: &'static BootInfo) {
     init_scheduler(mapper, frame_allocator);
 
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
-}
-
-pub fn activate_sch() {
     pit::init();
 }
 

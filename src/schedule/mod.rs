@@ -1,10 +1,8 @@
 use crate::memory::BootInfoFrameAllocator;
+use crate::println;
 use crate::schedule::scheduler::Scheduler;
-use crate::{print, println};
-use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::structures::paging::mapper::OffsetPageTable;
-use x86_64::VirtAddr;
 
 pub mod scheduler;
 pub mod stack;
@@ -12,13 +10,16 @@ pub mod switch;
 pub mod thread;
 
 use switch::context_switch_to;
-use thread::Thread;
+use thread::{Thread, ThreadId};
 
 pub(super) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
 pub(super) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
 pub(super) static ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
-pub fn init_scheduler(mapper: OffsetPageTable<'static>, frame_allocator: BootInfoFrameAllocator) {
+pub(crate) fn init_scheduler(
+    mapper: OffsetPageTable<'static>,
+    frame_allocator: BootInfoFrameAllocator,
+) {
     let mut lock = SCHEDULER.lock();
     *lock = Some(Scheduler::new());
 
@@ -30,13 +31,15 @@ pub fn init_scheduler(mapper: OffsetPageTable<'static>, frame_allocator: BootInf
     println!("Scheduler done...");
 }
 
-pub fn schedule() {
+pub(crate) fn schedule() {
     let next = SCHEDULER
         .try_lock()
         .and_then(|mut scheduler| scheduler.as_mut().and_then(|s| s.schedule()));
     if let Some((next_id, next_stack_pointer)) = next {
-        unsafe { context_switch_to(next_id, next_stack_pointer) };
-        return;
+        // We dont actually care if theres no paused thread
+        unsafe {
+            let _ = context_switch_to(next_id, next_stack_pointer);
+        };
     }
 }
 
@@ -81,4 +84,13 @@ where
     )
     .unwrap();
     slock.as_mut().unwrap().add_new_thread(thread);
+}
+
+pub fn current() -> ThreadId {
+    let mut slock = SCHEDULER.lock();
+    if slock.is_none() {
+        panic!("");
+    }
+
+    slock.as_mut().unwrap().current_thread_id()
 }

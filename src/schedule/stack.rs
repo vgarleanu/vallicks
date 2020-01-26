@@ -1,5 +1,4 @@
 use crate::schedule::switch::call_closure_entry;
-use crate::schedule::thread::ThreadId;
 use alloc::boxed::Box;
 use core::mem;
 use core::raw::TraitObject;

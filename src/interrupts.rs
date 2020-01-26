@@ -1,4 +1,3 @@
-use crate::pit::tick as pit_tick;
 use crate::schedule::schedule;
 use crate::{gdt, hlt_loop, print, println};
 #[cfg(test)]
@@ -9,7 +8,7 @@ use pic8259_simple::ChainedPics;
 use spin::Mutex;
 use x86_64::{
     instructions::port::Port,
-    registers::{control::Cr2, model_specific::Msr},
+    registers::control::Cr2,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 

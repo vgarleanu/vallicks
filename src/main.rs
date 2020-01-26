@@ -9,31 +9,38 @@ extern crate alloc;
 
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
-use rust_kernel::schedule as thread;
-#[cfg(test)]
-use rust_kernel::{exit, ExitCode};
-use rust_kernel::{hlt_loop, print, println, sprintln};
+use rust_kernel::prelude::*;
 
 entry_point!(__kmain);
 
 fn function() {
     let mut counter = 0u8;
+    let current_thread = thread::current();
     loop {
         if counter == 4 {
             break;
         }
-        println!("Hello from thread 1 cnt: {}", counter);
+        println!(
+            "Hello from thread {} cnt: {}",
+            current_thread.as_u64(),
+            counter
+        );
         counter += 1;
     }
 }
 
 fn function2() {
+    let current_thread = thread::current();
     let mut counter = 1u8;
     loop {
         if counter == 6 {
             break;
         }
-        println!("Hello from thread 2 cnt: {}", counter);
+        println!(
+            "Hello from thread {} cnt: {}",
+            current_thread.as_u64(),
+            counter
+        );
         counter += 1;
     }
 }
@@ -44,12 +51,12 @@ fn __kmain(boot_info: &'static BootInfo) -> ! {
 
     thread::spawn(function);
     thread::spawn(function2);
-    rust_kernel::activate_sch();
+    thread::spawn(function2);
     println!("Booted...");
 
     #[cfg(test)]
     test_main();
-    hlt_loop();
+    halt();
 }
 
 #[cfg(test)]
@@ -66,7 +73,7 @@ fn test_runner(tests: &[&dyn Fn()]) {
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
     sprintln!("{}", info);
-    hlt_loop();
+    halt();
 }
 
 #[cfg(test)]

@@ -1,7 +1,6 @@
 use crate::memory::{alloc_stack, StackBounds};
 use crate::schedule::stack::Stack;
 use alloc::boxed::Box;
-use core::convert::Into;
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{
     structures::paging::{mapper, FrameAllocator, Mapper, Size4KiB},
@@ -17,7 +16,7 @@ impl ThreadId {
         ThreadId(NEXT_THREAD_ID.fetch_add(1, Ordering::SeqCst))
     }
 
-    fn as_u64(&self) -> u64 {
+    pub fn as_u64(&self) -> u64 {
         self.0
     }
 }

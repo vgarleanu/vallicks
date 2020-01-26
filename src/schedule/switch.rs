@@ -38,7 +38,8 @@ pub unsafe fn context_switch_to(thread_id: ThreadId, stack_pointer: VirtAddr) {
 #[no_mangle]
 pub extern "C" fn add_paused_thread(paused_stack_pointer: VirtAddr, new_thread_id: ThreadId) {
     let mut lock = SCHEDULER.lock();
-    lock.as_mut()
+    let _ = lock
+        .as_mut()
         .expect("Scheduler not init...")
         .add_paused_thread(paused_stack_pointer, new_thread_id);
 }

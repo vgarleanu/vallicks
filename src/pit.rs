@@ -13,6 +13,7 @@ const PIT_REG: u16 = 0x43; // Mode/Command register (write only, a read is ignor
 // actual_freq = 1193182.0/reload = 1000.15255660
 // time_between = 1/actual_freq = 0.0009998474667 s ~= 999.847467 ns
 // floats are disabled in kernel code, so these are calculated by hand
+#[allow(dead_code)]
 const TARGET_FREQ: u64 = 100; // Hz
 const RELOAD_VALUE: u64 = 1193;
 

@@ -1,15 +1,7 @@
-use crate::memory::BootInfoFrameAllocator;
-use crate::println;
 use crate::schedule::thread::{Thread, ThreadId};
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;
-use x86_64::{
-    structures::paging::{
-        mapper::{self, OffsetPageTable},
-        FrameAllocator, Mapper, Size4KiB,
-    },
-    VirtAddr,
-};
+use x86_64::VirtAddr;
 /// Simple round-robin task scheduler
 pub struct Scheduler {
     threads: BTreeMap<ThreadId, Thread>,
@@ -78,14 +70,12 @@ impl Scheduler {
         self.paused_threads.push_back(thread_id);
     }
 
-    pub fn current_thread_id(&self) -> ThreadId {
+    pub(super) fn current_thread_id(&self) -> ThreadId {
         self.current_thread_id
     }
 
     pub(super) fn remove_thread(&mut self, id: ThreadId) {
-        println!("Removing thread: {:?}", id);
-        let thread = self.threads.remove(&id);
+        let _thread = self.threads.remove(&id);
         self.paused_threads.retain(|&x| x != id);
-        println!("Removed: {:?}", thread);
     }
 }

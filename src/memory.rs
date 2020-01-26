@@ -1,4 +1,5 @@
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
+use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
@@ -93,9 +94,6 @@ pub fn alloc_stack(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) -> Result<StackBounds, mapper::MapToError> {
-    use core::sync::atomic::{AtomicU64, Ordering};
-    use x86_64::structures::paging::PageTableFlags as Flags;
-
     static STACK_ALLOC_NEXT: AtomicU64 = AtomicU64::new(0x_5555_5555_0000);
 
     let guard_page_start = STACK_ALLOC_NEXT.fetch_add(
