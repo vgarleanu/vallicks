@@ -10,3 +10,5 @@ pub mod exit {
     use crate::exit;
     use crate::ExitCode;
 }
+
+pub use crate::interrupts::pop_buffer as input;

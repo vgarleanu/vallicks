@@ -1,10 +1,11 @@
 use crate::{gdt, pit::tick, prelude::*, schedule::schedule};
+use arraydeque::{ArrayDeque, Wrapping};
 use lazy_static::lazy_static;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pic8259_simple::ChainedPics;
 use spin::Mutex;
 use x86_64::{
-    instructions::port::Port,
+    instructions::{interrupts::without_interrupts, port::Port},
     registers::control::Cr2,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
@@ -36,6 +37,8 @@ lazy_static! {
     static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(
         Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore)
     );
+    static ref INPUT_BUFFER: Mutex<ArrayDeque<[char; 64], Wrapping>> =
+        Mutex::new(ArrayDeque::new());
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
@@ -50,6 +53,10 @@ lazy_static! {
         idt[32].set_handler_fn(exception_irq0);
         idt
     };
+}
+
+pub fn pop_buffer() -> Option<char> {
+    INPUT_BUFFER.lock().pop_front()
 }
 
 pub fn init_idt() {
@@ -92,8 +99,19 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
     if let Ok(Some(key_event)) = keyboard.add_byte(unsafe { port.read() }) {
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
-                DecodedKey::Unicode(c) => print!("{}", c),
-                DecodedKey::RawKey(k) => print!("{:?}", k),
+                DecodedKey::Unicode(c) => {
+                    // NOTE: Current VGA output only supports chars within ascii range
+                    if !c.is_ascii() {
+                        return;
+                    }
+
+                    unsafe {
+                        INPUT_BUFFER.force_unlock();
+                    }
+                    let mut lock = INPUT_BUFFER.lock();
+                    lock.push_back(c);
+                }
+                DecodedKey::RawKey(k) => {}
             }
         }
     }

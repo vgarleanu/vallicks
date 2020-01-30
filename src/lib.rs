@@ -35,6 +35,7 @@ pub mod prelude;
 pub mod schedule;
 pub mod serial;
 pub mod vga;
+pub mod pci;
 
 use crate::memory::{init as __meminit, BootInfoFrameAllocator};
 use crate::schedule::init_scheduler;
@@ -58,6 +59,10 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 pub fn init(boot_info: &'static BootInfo) {
     gdt::init_gdt();
     interrupts::init_idt();
+
+    /* We first create the allocator, because the itnerrupt handlers use some allocations
+     * internally
+     */
     unsafe { interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
 

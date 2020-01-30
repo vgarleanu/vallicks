@@ -14,7 +14,10 @@ lazy_static! {
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ($crate::vga::_print(format_args!($($arg)*)));
+    ($($arg:tt)*) => ({
+        $crate::serial::_print(format_args!($($arg)*));
+        $crate::vga::_print(format_args!($($arg)*));
+    });
 }
 
 #[macro_export]
@@ -93,7 +96,7 @@ impl Writer {
             match byte {
                 // Ascii range is 0x20..0x7e, if byte isnt in this range we print a block
                 0x20..=0x7e | b'\n' => self.write_byte(byte),
-                _ => self.write_byte(0xfe),
+                _ => {} // Just do nothing if invalid char
             }
         }
     }

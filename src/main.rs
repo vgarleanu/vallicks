@@ -7,43 +7,27 @@
 
 extern crate alloc;
 
+use alloc::{format, vec::Vec};
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
+use rust_kernel::pci;
 use rust_kernel::pit::get_milis;
 use rust_kernel::prelude::*;
 
 entry_point!(__kmain);
 
-fn function() {
-    let mut counter = 0u8;
-    let current_thread = thread::current();
+fn menu() {
     loop {
-        thread::sleep(5000);
-        if counter == 4 {
-            break;
+        if let Some(x) = input() {
+            print!("{}", x);
         }
-        println!(
-            "Hello from thread {} cnt: {}",
-            current_thread.as_u64(),
-            get_milis()
-        );
-        counter += 1;
     }
 }
 
-fn function2() {
-    let current_thread = thread::current();
-    let mut counter = 1u8;
+fn sleep_ever_s() {
     loop {
-        if counter == 6 {
-            break;
-        }
-        println!(
-            "Hello from thread {} cnt: {}",
-            current_thread.as_u64(),
-            counter
-        );
-        counter += 1;
+        println!("Thread {}: {}", thread::current().as_u64(), get_milis());
+        thread::sleep(1900); // sleep for 1s
     }
 }
 
@@ -51,7 +35,8 @@ fn __kmain(boot_info: &'static BootInfo) -> ! {
     println!("Booting...");
     rust_kernel::init(boot_info);
 
-    thread::spawn(function);
+    let mut pci = pci::Pci::new();
+    pci.enumerate();
 
     println!("Booted...");
 
