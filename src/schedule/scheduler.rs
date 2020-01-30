@@ -44,7 +44,6 @@ impl Scheduler {
                     self.paused_threads.push_back(next_id);
                     return None;
                 }
-                println!("Unparked");
                 next_thread.parked = None;
             }
             let next_stack_pointer = next_thread

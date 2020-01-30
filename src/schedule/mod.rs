@@ -47,13 +47,6 @@ pub(crate) fn schedule() {
 pub(crate) fn force_schedule() {
     let mut lock = SCHEDULER.lock();
     let next = lock.as_mut().and_then(|s| s.schedule());
-
-    if let Some((next_id, next_stack_pointer)) = next {
-        // We dont actually care if theres no paused thread
-        unsafe {
-            let _ = context_switch_to(next_id, next_stack_pointer);
-        };
-    }
 }
 
 pub fn spawn<F, T>(f: F)
@@ -109,16 +102,18 @@ pub fn current() -> ThreadId {
 }
 
 pub fn sleep(milis: u64) {
-    /*
-     * FIXME: Currently using a primitive style sleep instead of rescheduling
-    let mut slock = SCHEDULER.lock();
-    slock.as_mut().unwrap().park_current(milis);
-    force_schedule();
-    */
-
-    let last_milis = get_milis();
     loop {
-        if get_milis() > milis + last_milis {
+        let next = {
+            let mut slock = SCHEDULER.lock();
+            slock.as_mut().unwrap().park_current(milis);
+            slock.as_mut().unwrap().schedule()
+        };
+
+        if let Some((next_id, next_stack_pointer)) = next {
+            // We dont actually care if theres no paused thread
+            unsafe {
+                let _ = context_switch_to(next_id, next_stack_pointer);
+            };
             break;
         }
     }
