@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::rtl8139::RTL8139;
 use alloc::vec::Vec;
 use core::convert::TryInto;
 use x86_64::instructions::port::Port;
@@ -98,6 +99,13 @@ impl Pci {
 
         for d in devices {
             sprintln!("{:x?}", d);
+
+            if d.vendor_id == 0x10ec {
+                println!("Found RTL8139 NIC at: {:x}:{:x}", d.vendor_id, d.device_id);
+                self.set_mastering(d.bus, d.device, d.function);
+                let mut rtl = RTL8139::new(d.port_base.unwrap());
+                rtl.init();
+            }
         }
     }
 
@@ -129,6 +137,23 @@ impl Pci {
             }),
             _ => None,
         }
+    }
+
+    fn set_mastering(&mut self, bus: u16, device: u16, fun: u16) {
+        let original_conf = self.read32(bus, device, fun, 0x04);
+        let next_conf = original_conf | 0x04;
+
+        let id: u32 = 0x1 << 31
+            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
+            | 0x04;
+
+        unsafe {
+            self.command_port.write(id);
+            self.data_port.write(next_conf);
+        }
+
+        let next = self.read32(bus, device, fun, 0x04);
+        println!("   Orign: {:#034b} New: {:#034b}", original_conf, next);
     }
 
     fn read(&mut self, bus: u16, device: u16, fun: u16, offset: u32) -> u16 {

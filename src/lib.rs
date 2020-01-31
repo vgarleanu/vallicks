@@ -36,6 +36,7 @@ pub mod schedule;
 pub mod serial;
 pub mod vga;
 pub mod pci;
+pub mod rtl8139;
 
 use crate::memory::{init as __meminit, BootInfoFrameAllocator};
 use crate::schedule::init_scheduler;

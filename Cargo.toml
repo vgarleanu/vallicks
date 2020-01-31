@@ -5,7 +5,9 @@ authors = ["HinamoreCh4n <motherrussia711@gmail.com>"]
 edition = "2018"
 
 [package.metadata.bootimage]
-run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}", "-s"]
+run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}", "-s", "-vga", "std",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-nographic", "-device",
+                "rtl8139,netdev=network0", "-netdev", "user,id=network0,net=192.168.1.0/24,dhcpstart=192.168.1.9"]
 test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-serial", "stdio", "-display", "none"]
 test-success-exit-code = 33 # (0x10 << 1) | 1
 test-timeout = 300
@@ -24,6 +26,7 @@ pc-keyboard = "0.5.0"
 linked_list_allocator = "0.6.4"
 fringe = { git = "https://github.com/edef1c/libfringe", no-deafult-features = true, features = ["alloc"] }
 menu = "0.3.2"
+arraydeque = { version = "0.4.5", default-features = false }
 
 [profile.dev]
 panic = "abort"
