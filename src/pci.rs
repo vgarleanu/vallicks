@@ -10,6 +10,7 @@ const PCI_CP: u16 = 0xCF8;
 pub struct Pci {
     data_port: Port<u32>,
     command_port: Port<u32>,
+    reg: usize,
 }
 
 #[derive(Debug)]
@@ -47,6 +48,7 @@ impl Pci {
         Self {
             data_port: Port::new(PCI_DP),
             command_port: Port::new(PCI_CP),
+            reg: 0,
         }
     }
 
@@ -102,9 +104,13 @@ impl Pci {
 
             if d.vendor_id == 0x10ec {
                 println!("Found RTL8139 NIC at: {:x}:{:x}", d.vendor_id, d.device_id);
+                println!("{:#x?}", d);
                 self.set_mastering(d.bus, d.device, d.function);
-                let mut rtl = RTL8139::new(d.port_base.unwrap());
-                rtl.init();
+                self.set_interrupt(d.bus, d.device, d.function);
+                if self.reg == 0 {
+                    self.reg += 1;
+                    self.enumerate();
+                }
             }
         }
     }
@@ -154,6 +160,36 @@ impl Pci {
 
         let next = self.read32(bus, device, fun, 0x04);
         println!("   Orign: {:#034b} New: {:#034b}", original_conf, next);
+    }
+
+    fn set_enable_int(&mut self, bus: u16, device: u16, fun: u16) {
+        let original_conf = self.read32(bus, device, fun, 0x04);
+        let next_conf = original_conf | 0x04;
+
+        let id: u32 = 0x1 << 31
+            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
+            | 0x04;
+
+        unsafe {
+            self.command_port.write(id);
+            self.data_port.write(next_conf);
+        }
+
+        let next = self.read32(bus, device, fun, 0x04);
+        println!("   Orign: {:#034b} New: {:#034b}", original_conf, next);
+    }
+
+    fn set_interrupt(&mut self, bus: u16, device: u16, fun: u16) {
+        let id: u32 = 0x1 << 31
+            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
+            | 0x3c;
+
+        let new_int = 0xff02;
+
+        unsafe {
+            self.command_port.write(id);
+            self.data_port.write(new_int);
+        }
     }
 
     fn read(&mut self, bus: u16, device: u16, fun: u16, offset: u32) -> u16 {

@@ -13,6 +13,7 @@ use core::panic::PanicInfo;
 use rust_kernel::pci;
 use rust_kernel::pit::get_milis;
 use rust_kernel::prelude::*;
+use rust_kernel::rtl8139::RTL8139;
 
 entry_point!(__kmain);
 
@@ -25,9 +26,17 @@ fn menu() {
 }
 
 fn sleep_ever_s() {
+    let mut pci = pci::Pci::new();
+    pci.enumerate();
+    let mut rtl = RTL8139::new(0xc000);
+    rtl.init();
     loop {
-        println!("Thread {}: {}", thread::current().as_u64(), get_milis());
-        thread::sleep(1900); // sleep for 1s
+        thread::sleep(1000); // sleep for 1s
+        let data = [0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x66, 0x61, 0x67, 0x67, 0x6f, 0x74, 0x20];
+        rtl.write(&data);
+        unsafe {
+            asm!("int 0x22" ::::);
+        }
     }
 }
 
@@ -35,8 +44,7 @@ fn __kmain(boot_info: &'static BootInfo) -> ! {
     println!("Booting...");
     rust_kernel::init(boot_info);
 
-    let mut pci = pci::Pci::new();
-    pci.enumerate();
+    thread::spawn(sleep_ever_s);
 
     println!("Booted...");
 

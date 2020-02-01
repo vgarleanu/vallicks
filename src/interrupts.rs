@@ -12,6 +12,7 @@ use x86_64::{
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+pub const NIC: u8 = PIC_1_OFFSET + 2;
 
 pub static PICS: Mutex<ChainedPics> =
     Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
@@ -51,6 +52,7 @@ lazy_static! {
         idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
         idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
         idt[32].set_handler_fn(exception_irq0);
+        idt[NIC as usize].set_handler_fn(nic_irq);
         idt
     };
 }
@@ -129,6 +131,16 @@ extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
         PICS.lock().notify_end_of_interrupt(32);
     }
     schedule();
+}
+
+// TODO: Assign this interrupt when PCI devices load
+extern "x86-interrupt" fn nic_irq(_: &mut InterruptStackFrame) {
+    let mut lel: Port<u32> = Port::new(0xc000 + 0x3e);
+    println!("Handled some shit");
+    unsafe {
+        lel.write(0x1);
+        PICS.lock().notify_end_of_interrupt(NIC);
+    }
 }
 
 #[test_case]

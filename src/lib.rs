@@ -30,13 +30,13 @@ pub mod allocator;
 pub mod gdt;
 pub mod interrupts;
 pub mod memory;
+pub mod pci;
 pub mod pit;
 pub mod prelude;
+pub mod rtl8139;
 pub mod schedule;
 pub mod serial;
 pub mod vga;
-pub mod pci;
-pub mod rtl8139;
 
 use crate::memory::{init as __meminit, BootInfoFrameAllocator};
 use crate::schedule::init_scheduler;
@@ -71,8 +71,6 @@ pub fn init(boot_info: &'static BootInfo) {
     let mut mapper = unsafe { __meminit(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
-    let page = Page::containing_address(VirtAddr::new(0));
-    memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("Failed to initialize heap");
 
     init_scheduler(mapper, frame_allocator);
