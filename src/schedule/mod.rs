@@ -1,6 +1,5 @@
-use crate::memory::BootInfoFrameAllocator;
-use crate::pit::get_milis;
 use crate::prelude::*;
+use crate::arch::memory::BootInfoFrameAllocator;
 use crate::schedule::scheduler::Scheduler;
 use spin::Mutex;
 use x86_64::structures::paging::mapper::OffsetPageTable;
@@ -42,11 +41,6 @@ pub(crate) fn schedule() {
             let _ = context_switch_to(next_id, next_stack_pointer);
         };
     }
-}
-
-pub(crate) fn force_schedule() {
-    let mut lock = SCHEDULER.lock();
-    let next = lock.as_mut().and_then(|s| s.schedule());
 }
 
 pub fn spawn<F, T>(f: F)

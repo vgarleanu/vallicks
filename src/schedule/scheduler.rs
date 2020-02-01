@@ -1,5 +1,4 @@
-use crate::pit::get_milis;
-use crate::prelude::*;
+use crate::arch::pit::get_milis;
 use crate::schedule::thread::{Thread, ThreadId};
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;

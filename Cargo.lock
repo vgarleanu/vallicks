@@ -42,26 +42,12 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "fringe"
-version = "1.2.1"
-source = "git+https://github.com/edef1c/libfringe#099bc28867c5014661e26c16d8a5a124d5fc7dc5"
-dependencies = [
- "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
- "valgrind_request 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "libc"
-version = "0.2.66"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "linked_list_allocator"
@@ -100,7 +86,6 @@ version = "0.1.0"
 dependencies = [
  "arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "bootloader 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "fringe 1.2.1 (git+https://github.com/edef1c/libfringe)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "linked_list_allocator 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "menu 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -153,11 +138,6 @@ version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "valgrind_request"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "volatile"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -193,9 +173,7 @@ dependencies = [
 "checksum bootloader 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)" = "d596849a47f28abdea62d7a6a25c4f6e69c3d9b09b0a2877db6e9cda004ca993"
 "checksum cast 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "4b9434b9a5aa1450faa3f9cb14ea0e8c53bb5d2b3c1bfd1ab4fc03e9f33fbfb0"
 "checksum cpuio 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "22b8e308ccfc5acf3b82f79c0eac444cf6114cb2ac67a230ca6c177210068daa"
-"checksum fringe 1.2.1 (git+https://github.com/edef1c/libfringe)" = "<none>"
 "checksum lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-"checksum libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)" = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"
 "checksum linked_list_allocator 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "47314ec1d29aa869ee7cb5a5be57be9b1055c56567d59c3fb6689926743e0bea"
 "checksum menu 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b03d7f798bfe97329ad6df937951142eec93886b37d87010502dd25e8cc75fd5"
 "checksum nodrop 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)" = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
@@ -207,7 +185,6 @@ dependencies = [
 "checksum spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 "checksum uart_16550 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "803ea8cb602dbb32c1a657a866d2dd79fe7dbeab0fb2ac667cb4dcc7de12a58b"
 "checksum ux 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "88dfeb711b61ce620c0cb6fd9f8e3e678622f0c971da2a63c4b3e25e88ed012f"
-"checksum valgrind_request 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d0fb139b14473e1350e34439c888e44c805f37b4293d17f87ea920a66a20a99a"
 "checksum volatile 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "6af0edf5b4faacc31fc51159244d78d65ec580f021afcef7bd53c04aeabc7f29"
 "checksum x86_64 0.7.7 (registry+https://github.com/rust-lang/crates.io-index)" = "1f27d9168654aee1b0c1b73746caeb4aa33248f8b8c8f6e100e697fcc2a794b2"
 "checksum x86_64 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f21672dcbed52bc09eea030d189600c0189c66c97bc5b31779eb780e064a201f"

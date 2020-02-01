@@ -1,43 +1,44 @@
-use crate::{gdt, pit::tick, prelude::*, schedule::schedule};
+use crate::{arch::gdt, arch::pit::tick, prelude::*, schedule::schedule};
+use alloc::{boxed::Box, vec::Vec};
 use arraydeque::{ArrayDeque, Wrapping};
 use lazy_static::lazy_static;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pic8259_simple::ChainedPics;
 use spin::Mutex;
 use x86_64::{
-    instructions::{interrupts::without_interrupts, port::Port},
+    instructions::port::Port,
     registers::control::Cr2,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
+macro_rules! make_int_handler {
+    ($name:ident => $int:expr) => {
+        extern "x86-interrupt" fn $name(_frame: &mut InterruptStackFrame) {
+            println!("Handling int {}", $int);
+            let lock = INT_TABLE.lock();
+            for handler in lock.iter() {
+                // TODO: Do a try if int then handle
+                handler($int);
+            }
+            unsafe {
+                PICS.lock().notify_end_of_interrupt($int);
+            }
+        }
+    };
+}
+
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-pub const NIC: u8 = PIC_1_OFFSET + 2;
 
 pub static PICS: Mutex<ChainedPics> =
     Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum InterruptIndex {
-    Timer = PIC_1_OFFSET,
-    Keyboard,
-}
-
-impl InterruptIndex {
-    fn as_u8(self) -> u8 {
-        self as u8
-    }
-
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
-    }
-}
 
 lazy_static! {
     static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(
         Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore)
     );
+    // TODO: Make the INT_TABLE more specific rather than bruteforce interrupt handlers for drivers
+    static ref INT_TABLE: Mutex<Vec<Box<dyn Fn(i32) + Send + 'static>>> = Mutex::new(Vec::new());
     static ref INPUT_BUFFER: Mutex<ArrayDeque<[char; 64], Wrapping>> =
         Mutex::new(ArrayDeque::new());
     static ref IDT: InterruptDescriptorTable = {
@@ -49,13 +50,28 @@ lazy_static! {
                 .set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX as u16);
         }
-        idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
-        idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
         idt[32].set_handler_fn(exception_irq0);
-        idt[NIC as usize].set_handler_fn(nic_irq);
+        idt[33].set_handler_fn(keyboard_interrupt_handler);
+        idt[34].set_handler_fn(int34);
+        idt[35].set_handler_fn(int35);
+        idt[36].set_handler_fn(int36);
+        idt[37].set_handler_fn(int37);
+        idt[38].set_handler_fn(int38);
+        idt[39].set_handler_fn(int39);
+        idt[40].set_handler_fn(int40);
+        // TODO: In reality we really need to only handle up to int 0x40, but once we get a apic we
+        // want a more generic handler
+        idt[41].set_handler_fn(int41);
+        idt[42].set_handler_fn(int42);
+        idt[43].set_handler_fn(int43);
+        idt[44].set_handler_fn(int44);
+        idt[45].set_handler_fn(int45);
+        idt[46].set_handler_fn(int46);
         idt
     };
 }
+
+pub fn register_interrupt(handler: Box<dyn Fn() + 'static>) {}
 
 pub fn pop_buffer() -> Option<char> {
     INPUT_BUFFER.lock().pop_front()
@@ -87,13 +103,6 @@ extern "x86-interrupt" fn double_fault_handler(
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-    unsafe {
-        PICS.lock()
-            .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
-    }
-}
-
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
@@ -113,14 +122,13 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
                     let mut lock = INPUT_BUFFER.lock();
                     lock.push_back(c);
                 }
-                DecodedKey::RawKey(k) => {}
+                DecodedKey::RawKey(_) => {}
             }
         }
     }
 
     unsafe {
-        PICS.lock()
-            .notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
+        PICS.lock().notify_end_of_interrupt(33);
     }
 }
 
@@ -133,19 +141,18 @@ extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
     schedule();
 }
 
-// TODO: Assign this interrupt when PCI devices load
-extern "x86-interrupt" fn nic_irq(_: &mut InterruptStackFrame) {
-    let mut lel: Port<u32> = Port::new(0xc000 + 0x3e);
-    println!("Handled some shit");
-    unsafe {
-        lel.write(0x1);
-        PICS.lock().notify_end_of_interrupt(NIC);
-    }
-}
-
-#[test_case]
-fn test_breakpoint_exception() {
-    sprint!("test_breakpoint_exception...");
-    x86_64::instructions::interrupts::int3();
-    sprintln!("[OK]");
-}
+// FIXME: Figure out a way to maybe make a generic handler which can grab the interrupt it is
+// handling atm
+make_int_handler!(int34 => 34);
+make_int_handler!(int35 => 35);
+make_int_handler!(int36 => 36);
+make_int_handler!(int37 => 37);
+make_int_handler!(int38 => 38);
+make_int_handler!(int39 => 39);
+make_int_handler!(int40 => 40);
+make_int_handler!(int41 => 41);
+make_int_handler!(int42 => 42);
+make_int_handler!(int43 => 43);
+make_int_handler!(int44 => 44);
+make_int_handler!(int45 => 45);
+make_int_handler!(int46 => 46);

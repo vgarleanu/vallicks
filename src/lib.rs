@@ -26,21 +26,15 @@ use bootloader::BootInfo;
 #[cfg(test)]
 entry_point!(__kmain_test);
 
-pub mod allocator;
-pub mod gdt;
-pub mod interrupts;
-pub mod memory;
-pub mod pci;
-pub mod pit;
+pub mod arch;
+pub mod driver;
 pub mod prelude;
-pub mod rtl8139;
 pub mod schedule;
-pub mod serial;
-pub mod vga;
 
-use crate::memory::{init as __meminit, BootInfoFrameAllocator};
+use crate::arch::memory::{init as __meminit, BootInfoFrameAllocator};
 use crate::schedule::init_scheduler;
-use x86_64::{structures::paging::Page, VirtAddr};
+use x86_64::{ VirtAddr};
+use prelude::*;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -58,25 +52,26 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 }
 
 pub fn init(boot_info: &'static BootInfo) {
-    gdt::init_gdt();
-    interrupts::init_idt();
+    arch::gdt::init_gdt();
 
     /* We first create the allocator, because the itnerrupt handlers use some allocations
      * internally
      */
-    unsafe { interrupts::PICS.lock().initialize() };
-    x86_64::instructions::interrupts::enable();
+    unsafe { arch::interrupts::PICS.lock().initialize() };
+    arch::interrupts::init_idt();
 
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { __meminit(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("Failed to initialize heap");
+    arch::allocator::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("Failed to initialize heap");
 
     init_scheduler(mapper, frame_allocator);
 
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
-    pit::init();
+    arch::pit::init();
+    x86_64::instructions::interrupts::enable();
 }
 
 pub fn exit(exit_code: ExitCode) {

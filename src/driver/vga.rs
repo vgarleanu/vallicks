@@ -15,8 +15,8 @@ lazy_static! {
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ({
-        $crate::serial::_print(format_args!($($arg)*));
-        $crate::vga::_print(format_args!($($arg)*));
+        $crate::driver::serial::_print(format_args!($($arg)*));
+        $crate::driver::vga::_print(format_args!($($arg)*));
     });
 }
 

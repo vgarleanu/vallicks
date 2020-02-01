@@ -29,7 +29,7 @@ pub fn init_heap(
     }
 
     unsafe {
-        super::ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
+        crate::ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
     }
 
     Ok(())

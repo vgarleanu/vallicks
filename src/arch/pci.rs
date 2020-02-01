@@ -1,7 +1,5 @@
 use crate::prelude::*;
-use crate::rtl8139::RTL8139;
 use alloc::vec::Vec;
-use core::convert::TryInto;
 use x86_64::instructions::port::Port;
 
 const PCI_DP: u16 = 0xCFC;
@@ -107,6 +105,8 @@ impl Pci {
                 println!("{:#x?}", d);
                 self.set_mastering(d.bus, d.device, d.function);
                 self.set_interrupt(d.bus, d.device, d.function);
+                let status = self.read32(d.bus, d.device, d.function, 0x04);
+                println!("{:#034b}", status);
                 if self.reg == 0 {
                     self.reg += 1;
                     self.enumerate();
@@ -162,6 +162,7 @@ impl Pci {
         println!("   Orign: {:#034b} New: {:#034b}", original_conf, next);
     }
 
+    #[allow(dead_code)]
     fn set_enable_int(&mut self, bus: u16, device: u16, fun: u16) {
         let original_conf = self.read32(bus, device, fun, 0x04);
         let next_conf = original_conf | 0x04;

@@ -7,16 +7,18 @@
 
 extern crate alloc;
 
-use alloc::{format, vec::Vec};
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
-use rust_kernel::pci;
-use rust_kernel::pit::get_milis;
-use rust_kernel::prelude::*;
-use rust_kernel::rtl8139::RTL8139;
+#[allow(unused_imports)]
+use rust_kernel::{
+    arch::{pci, pit::get_milis},
+    driver::rtl8139::RTL8139,
+    prelude::*,
+};
 
 entry_point!(__kmain);
 
+#[allow(dead_code)]
 fn menu() {
     loop {
         if let Some(x) = input() {
@@ -32,11 +34,10 @@ fn sleep_ever_s() {
     rtl.init();
     loop {
         thread::sleep(1000); // sleep for 1s
-        let data = [0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x66, 0x61, 0x67, 0x67, 0x6f, 0x74, 0x20];
+        let data = [
+            0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x66, 0x61, 0x67, 0x67, 0x6f, 0x74, 0x20,
+        ];
         rtl.write(&data);
-        unsafe {
-            asm!("int 0x22" ::::);
-        }
     }
 }
 

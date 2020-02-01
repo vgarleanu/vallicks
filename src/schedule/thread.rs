@@ -1,4 +1,4 @@
-use crate::memory::{alloc_stack, StackBounds};
+use crate::arch::memory::{alloc_stack, StackBounds};
 use crate::schedule::stack::Stack;
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicU64, Ordering};

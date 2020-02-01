@@ -1,9 +1,8 @@
-use crate::memory::translate_addr;
+use crate::arch::memory::translate_addr;
 use crate::prelude::*;
 use alloc::boxed::Box;
-use core::convert::TryInto;
 use x86_64::instructions::port::Port;
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::VirtAddr;
 
 pub struct RTL8139 {
     config_1: Port<u32>,
@@ -56,13 +55,13 @@ impl RTL8139 {
             }
 
             let ptr = VirtAddr::from_ptr(self.buffer.as_ptr());
-            let physical = unsafe { translate_addr(ptr).unwrap() };
+            let physical = translate_addr(ptr).unwrap();
             println!("Sending VirtAddr: {:?} PhysAddr: {:?}", ptr, physical);
             self.rbstart.write(physical.as_u64() as u32);
-            self.imr.write(0x809f);
-//            self.imr.write(0x0005);
+            //            self.imr.write(0x0005);
             self.wrap.write(0xf | (1 << 7));
             self.cmd_reg.write(0x0c);
+            self.imr.write(0x809f);
 
             let data = [234u8; 120];
             self.write(&data);
@@ -89,9 +88,5 @@ impl RTL8139 {
 
         // Force interrupt
         unsafe { self.tppoll.write(0xff) }
-        let mut lel: Port<u32> = Port::new(0xc000 + 0x3e);
-        unsafe {
-            lel.write(0x1);
-        }
     }
 }

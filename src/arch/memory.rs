@@ -125,7 +125,7 @@ pub unsafe fn translate_addr(addr: VirtAddr) -> Option<PhysAddr> {
         // convert the frame into a page table reference
         let virt = mem_offset + frame.start_address().as_u64();
         let table_ptr: *const PageTable = virt.as_ptr();
-        let table = unsafe { &*table_ptr };
+        let table =  &*table_ptr ;
 
         // read the page table entry and update `frame`
         let entry = &table[index];
