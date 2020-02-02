@@ -47,6 +47,7 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 }
 
 pub fn init(boot_info: &'static BootInfo) {
+    arch::cpu::cpu_info();
     arch::gdt::init_gdt();
     println!("[GDT] GDT init done...");
 
@@ -54,7 +55,7 @@ pub fn init(boot_info: &'static BootInfo) {
      * internally
      */
     unsafe { arch::interrupts::PICS.lock().initialize() };
-    println!("[PIT] PIT init done...");
+    println!("[PIC] PIC init done...");
     arch::interrupts::init_idt();
 
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);

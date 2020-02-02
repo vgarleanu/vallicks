@@ -15,6 +15,7 @@ pub struct RTL8139 {
     tx_cmd: [Port<u32>; 4],
     current: usize,
     tppoll: Port<u8>,
+    ack: Port<u16>,
 }
 
 impl RTL8139 {
@@ -41,6 +42,7 @@ impl RTL8139 {
             ],
             current: 0usize,
             tppoll: Port::new(base + 0xd9),
+            ack: Port::new(base + 0x3e),
         }
     }
 
@@ -59,14 +61,17 @@ impl RTL8139 {
 
         let ptr = VirtAddr::from_ptr(self.buffer.as_ptr());
         let physical = unsafe { translate_addr(ptr).unwrap() };
-        println!("[RTL8139] Setting RX buffer to VirtAddr: {:?} PhysAddr: {:?}", ptr, physical);
+        println!(
+            "[RTL8139] Setting RX buffer to VirtAddr: {:?} PhysAddr: {:?}",
+            ptr, physical
+        );
 
         unsafe {
             self.rbstart.write(physical.as_u64() as u32);
-            //            self.imr.write(0x0005);
+            //    self.imr.write(0x809f);
+            self.imr.write(0x0005);
             self.wrap.write(0xf | (1 << 7));
             self.cmd_reg.write(0x0c);
-            self.imr.write(0x809f);
         }
 
         println!("[RTL8139] Config done...");
@@ -93,8 +98,5 @@ impl RTL8139 {
         }
 
         self.current = (self.current + 1) % 4;
-
-        // Force interrupt
-        unsafe { self.tppoll.write(0xff) }
     }
 }

@@ -14,10 +14,8 @@ use x86_64::{
 macro_rules! make_int_handler {
     ($name:ident => $int:expr) => {
         extern "x86-interrupt" fn $name(_frame: &mut InterruptStackFrame) {
-            println!("Handling int {}", $int);
             let lock = INT_TABLE.lock();
             for handler in lock.iter() {
-                // TODO: Do a try if int then handle
                 handler($int);
             }
             unsafe {
@@ -37,7 +35,6 @@ lazy_static! {
     static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(
         Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore)
     );
-    // TODO: Make the INT_TABLE more specific rather than bruteforce interrupt handlers for drivers
     static ref INT_TABLE: Mutex<Vec<Box<dyn Fn(i32) + Send + 'static>>> = Mutex::new(Vec::new());
     static ref INPUT_BUFFER: Mutex<ArrayDeque<[char; 64], Wrapping>> =
         Mutex::new(ArrayDeque::new());
@@ -59,14 +56,14 @@ lazy_static! {
         idt[38].set_handler_fn(int38);
         idt[39].set_handler_fn(int39);
         idt[40].set_handler_fn(int40);
-        // TODO: In reality we really need to only handle up to int 0x40, but once we get a apic we
-        // want a more generic handler
         idt[41].set_handler_fn(int41);
         idt[42].set_handler_fn(int42);
-        idt[43].set_handler_fn(int43);
+        idt[43].set_handler_fn(test_43);
         idt[44].set_handler_fn(int44);
         idt[45].set_handler_fn(int45);
         idt[46].set_handler_fn(int46);
+        idt[47].set_handler_fn(int47);
+        idt[48].set_handler_fn(int48);
         idt
     };
 }
@@ -79,6 +76,9 @@ pub fn pop_buffer() -> Option<char> {
 
 pub fn init_idt() {
     IDT.load();
+    unsafe {
+        PICS.lock().notify_end_of_interrupt(32 + 11);
+    }
     println!("[IDT] Interrupt setup done...");
 }
 
@@ -104,6 +104,14 @@ extern "x86-interrupt" fn double_fault_handler(
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
+extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
+    tick();
+    unsafe {
+        PICS.lock().notify_end_of_interrupt(32);
+    }
+    schedule();
+}
+
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
@@ -112,11 +120,9 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
                 DecodedKey::Unicode(c) => {
-                    // NOTE: Current VGA output only supports chars within ascii range
                     if !c.is_ascii() {
                         return;
                     }
-
                     unsafe {
                         INPUT_BUFFER.force_unlock();
                     }
@@ -133,13 +139,13 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
     }
 }
 
-// TODO: Add our scheduler invocation here
-extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
-    tick();
+extern "x86-interrupt" fn test_43(_: &mut InterruptStackFrame) {
+    println!("LELELELE  43");
     unsafe {
-        PICS.lock().notify_end_of_interrupt(32);
+        let mut p: Port<u16> = Port::new(0xc000 + 0x3e);
+        p.write(0xff);
+        PICS.lock().notify_end_of_interrupt(43);
     }
-    schedule();
 }
 
 // FIXME: Figure out a way to maybe make a generic handler which can grab the interrupt it is
@@ -157,3 +163,5 @@ make_int_handler!(int43 => 43);
 make_int_handler!(int44 => 44);
 make_int_handler!(int45 => 45);
 make_int_handler!(int46 => 46);
+make_int_handler!(int47 => 47);
+make_int_handler!(int48 => 48);

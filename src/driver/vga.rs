@@ -1,3 +1,4 @@
+use crate::arch::pit::get_milis;
 use alloc::{boxed::Box, sync::Arc};
 use core::fmt::{self, Write};
 use lazy_static::lazy_static;
@@ -24,7 +25,7 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::print!("[{}ms] {}\n", $crate::arch::pit::get_milis() ,format_args!($($arg)*)));
 }
 
 #[doc(hidden)]

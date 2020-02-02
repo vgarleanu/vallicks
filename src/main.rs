@@ -3,7 +3,6 @@
 #![test_runner(crate::test_runner)]
 #![no_std]
 #![no_main]
-#![reexport_test_harness_main = "test_main"]
 
 extern crate alloc;
 
@@ -58,25 +57,8 @@ fn __kmain(boot_info: &'static BootInfo) -> ! {
     halt();
 }
 
-#[cfg(test)]
-fn test_runner(tests: &[&dyn Fn()]) {
-    sprintln!("Running {} tests", tests.len());
-    for test in tests {
-        test();
-    }
-    exit(ExitCode::Success);
-}
-
-#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    sprintln!("{}", info);
     halt();
-}
-
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    rust_kernel::test_panic_handler(info);
 }
