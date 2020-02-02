@@ -53,7 +53,7 @@ pub fn call_closure_entry() -> ! {
         call call_closure
     " ::: "mem" : "intel", "volatile")
     };
-    unreachable!();
+    unreachable!("call_closure_entry");
 }
 
 #[no_mangle]

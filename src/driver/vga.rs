@@ -1,3 +1,4 @@
+use alloc::{boxed::Box, sync::Arc};
 use core::fmt::{self, Write};
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -151,33 +152,4 @@ impl fmt::Write for Writer {
         self.write_string(s);
         Ok(())
     }
-}
-
-#[cfg(test)]
-use crate::{sprint, sprintln};
-
-#[test_case]
-fn test_println_many() {
-    sprint!("test_println_many...");
-    for _ in 0..200 {
-        println!("test_println_many output")
-    }
-    sprintln!("[OK]");
-}
-
-#[test_case]
-fn test_println_output() {
-    sprint!("test_println_output...");
-
-    let s = "Some test string that fits on a single line";
-    println!("{}", s);
-    interrupts::without_interrupts(|| {
-        let mut writer = WRITER.lock();
-        writeln!(writer, "\n{}", s).expect("writeln failed");
-        for (i, c) in s.chars().enumerate() {
-            let schar = writer.buffer.chars[VGA_BUFFER_HEIGHT - 2][i].read();
-            assert_eq!(char::from(schar.character), c);
-        }
-    });
-    sprintln!("[OK]");
 }

@@ -16,7 +16,7 @@ pub(super) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
 pub(super) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
 pub(super) static ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
-pub(crate) fn init_scheduler(
+pub fn init_scheduler(
     mapper: OffsetPageTable<'static>,
     frame_allocator: BootInfoFrameAllocator,
 ) {
@@ -28,7 +28,7 @@ pub(crate) fn init_scheduler(
 
     let mut lock = ALLOCATOR.lock();
     *lock = Some(frame_allocator);
-    println!("Scheduler done...");
+    println!("[SCHED] Scheduler setup done...");
 }
 
 pub(crate) fn schedule() {

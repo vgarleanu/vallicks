@@ -12,7 +12,7 @@ use core::panic::PanicInfo;
 #[allow(unused_imports)]
 use rust_kernel::{
     arch::{pci, pit::get_milis},
-    driver::rtl8139::RTL8139,
+    driver::*,
     prelude::*,
 };
 
@@ -27,9 +27,8 @@ fn menu() {
     }
 }
 
+/*
 fn sleep_ever_s() {
-    let mut pci = pci::Pci::new();
-    pci.enumerate();
     let mut rtl = RTL8139::new(0xc000);
     rtl.init();
     loop {
@@ -40,12 +39,17 @@ fn sleep_ever_s() {
         rtl.write(&data);
     }
 }
+*/
 
 fn __kmain(boot_info: &'static BootInfo) -> ! {
     println!("Booting...");
     rust_kernel::init(boot_info);
+    let mut pci = pci::Pci::new();
+    pci.enumerate();
 
-    thread::spawn(sleep_ever_s);
+    Driver::load(&mut pci.devices);
+
+    //thread::spawn(sleep_ever_s);
 
     println!("Booted...");
 

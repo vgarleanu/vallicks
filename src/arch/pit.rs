@@ -38,7 +38,7 @@ pub fn init() {
         p_pit1_ch0.write(((RELOAD_VALUE & 0xFF00) >> 8) as u8); // high
     }
 
-    println!("PIT Initialized");
+    println!("[PIT] PIT Setup done...");
 }
 
 pub fn tick() {

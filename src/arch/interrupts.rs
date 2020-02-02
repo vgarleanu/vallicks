@@ -79,6 +79,7 @@ pub fn pop_buffer() -> Option<char> {
 
 pub fn init_idt() {
     IDT.load();
+    println!("[IDT] Interrupt setup done...");
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {

@@ -15,26 +15,21 @@
 
 extern crate alloc;
 
-use core::panic::PanicInfo;
-use linked_list_allocator::LockedHeap;
-
-#[cfg(test)]
-use bootloader::entry_point;
-
-use bootloader::BootInfo;
-
-#[cfg(test)]
-entry_point!(__kmain_test);
-
 pub mod arch;
 pub mod driver;
 pub mod prelude;
 pub mod schedule;
 
-use crate::arch::memory::{init as __meminit, BootInfoFrameAllocator};
-use crate::schedule::init_scheduler;
-use x86_64::{ VirtAddr};
+#[allow(unused_imports)]
+use crate::{
+    arch::memory::{init as __meminit, BootInfoFrameAllocator},
+    schedule::init_scheduler,
+};
+use bootloader::BootInfo;
+use core::panic::PanicInfo;
+use linked_list_allocator::LockedHeap;
 use prelude::*;
+use x86_64::VirtAddr;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -53,11 +48,13 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 
 pub fn init(boot_info: &'static BootInfo) {
     arch::gdt::init_gdt();
+    println!("[GDT] GDT init done...");
 
     /* We first create the allocator, because the itnerrupt handlers use some allocations
      * internally
      */
     unsafe { arch::interrupts::PICS.lock().initialize() };
+    println!("[PIT] PIT init done...");
     arch::interrupts::init_idt();
 
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
@@ -66,12 +63,14 @@ pub fn init(boot_info: &'static BootInfo) {
 
     arch::allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("Failed to initialize heap");
+    println!("[ALLOC] Allocator init done...");
 
-    init_scheduler(mapper, frame_allocator);
+    //init_scheduler(mapper, frame_allocator);
 
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
     arch::pit::init();
     x86_64::instructions::interrupts::enable();
+    println!("[INT] Ok");
 }
 
 pub fn exit(exit_code: ExitCode) {
@@ -102,17 +101,4 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     sprintln!("Error: {}\n", info);
     exit(ExitCode::Failed);
     hlt_loop();
-}
-
-#[cfg(test)]
-fn __kmain_test(boot_info: &'static BootInfo) -> ! {
-    init(boot_info);
-    test_main();
-    hlt_loop()
-}
-
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    test_panic_handler(info)
 }

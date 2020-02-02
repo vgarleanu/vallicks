@@ -2,29 +2,26 @@ use crate::prelude::*;
 use alloc::vec::Vec;
 use x86_64::instructions::port::Port;
 
-const PCI_DP: u16 = 0xCFC;
-const PCI_CP: u16 = 0xCF8;
-
 pub struct Pci {
-    data_port: Port<u32>,
-    command_port: Port<u32>,
-    reg: usize,
+    pub devices: Vec<Device>,
 }
 
 #[derive(Debug)]
 pub struct Device {
-    bus: u16,
-    device: u16,
-    function: u16,
-    vendor_id: u16,
-    device_id: u16,
-    class_id: u16,
-    subclass_id: u16,
-    interface_id: u8,
-    revision: u8,
-    interrupt: u16,
+    pub bus: u16,
+    pub device: u16,
+    pub function: u16,
+    pub vendor_id: u16,
+    pub device_id: u16,
+    pub class_id: u16,
+    pub subclass_id: u16,
+    pub interface_id: u8,
+    pub revision: u8,
+    pub interrupt: u16,
+    pub port_base: Option<u32>,
 
-    port_base: Option<u32>,
+    data_port: Port<u32>,
+    command_port: Port<u32>,
 }
 
 #[derive(Debug)]
@@ -44,90 +41,89 @@ pub enum DeviceType {
 impl Pci {
     pub fn new() -> Self {
         Self {
-            data_port: Port::new(PCI_DP),
-            command_port: Port::new(PCI_CP),
-            reg: 0,
-        }
-    }
-
-    fn get_device(&mut self, bus: u16, device: u16, function: u16) -> Device {
-        Device {
-            bus,
-            device,
-            function,
-            vendor_id: self.read(bus, device, function, 0x00) as u16,
-            device_id: self.read(bus, device, function, 0x02) as u16,
-
-            class_id: self.read(bus, device, function, 0x0b) >> 8,
-            subclass_id: self.read(bus, device, function, 0x0a) & 0xff,
-            interface_id: self.read(bus, device, function, 0x09) as u8,
-
-            revision: self.read(bus, device, function, 0x08) as u8,
-            interrupt: self.read(bus, device, function, 0x3c) & 0x00ff,
-            port_base: None,
+            devices: Vec::new(),
         }
     }
 
     pub fn enumerate(&mut self) {
-        let mut devices = Vec::new();
+        println!("[PCI] Starting enumeration");
         for bus in 0..8 {
             for dev in 0..32 {
                 for fnt in 0..8 {
-                    let mut device = self.get_device(bus, dev, fnt);
-                    if device.vendor_id <= 0x0004 || device.vendor_id == 0xffff {
-                        continue;
+                    if let Some(device) = Device::from(bus, dev, fnt) {
+                        self.devices.push(device);
                     }
-
-                    for i in 0..6 {
-                        let bar = self.get_base_addr_reg(bus, dev, fnt, i);
-                        if let Some(x) = bar {
-                            match x.reg_type {
-                                DeviceType::InputOutput => {
-                                    device.port_base = Some(x.addr as u32);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-
-                    devices.push(device);
                 }
             }
         }
-
-        devices.sort_by(|a, b| a.device_id.cmp(&b.device_id));
-
-        for d in devices {
-            sprintln!("{:x?}", d);
-
-            if d.vendor_id == 0x10ec {
-                println!("Found RTL8139 NIC at: {:x}:{:x}", d.vendor_id, d.device_id);
-                println!("{:#x?}", d);
-                self.set_mastering(d.bus, d.device, d.function);
-                self.set_interrupt(d.bus, d.device, d.function);
-                let status = self.read32(d.bus, d.device, d.function, 0x04);
-                println!("{:#034b}", status);
-                if self.reg == 0 {
-                    self.reg += 1;
-                    self.enumerate();
-                }
-            }
+        self.devices.sort_by(|a, b| a.device_id.cmp(&b.device_id));
+        println!("[PCI] Enumerated {} devices:", self.devices.len());
+        for device in self.devices.iter() {
+            println!(
+                "       Bus: {} Device: {} ID: {:x}:{:x} Class: {:x}:{:x}",
+                device.bus,
+                device.device,
+                device.vendor_id,
+                device.device_id,
+                device.class_id,
+                device.subclass_id
+            );
         }
     }
+}
 
-    fn get_base_addr_reg(
-        &mut self,
-        bus: u16,
-        device: u16,
-        fun: u16,
-        bar: u16,
-    ) -> Option<BaseAddrReg> {
-        let hdr_type = self.read(bus, device, fun, 0x0e) & 0x7f;
+impl Device {
+    pub fn from(bus: u16, device: u16, function: u16) -> Option<Self> {
+        let mut device = Self {
+            bus,
+            device,
+            function,
+            data_port: Port::new(0xcfc),
+            command_port: Port::new(0xcf8),
+            ..Default::default()
+        };
+
+        device.fill_headers();
+
+        if device.vendor_id <= 0x0004 || device.vendor_id == 0xffff {
+            return None;
+        }
+
+        for i in 0..6 {
+            if let Some(x) = device.get_base_addr_reg(i) {
+                match x.reg_type {
+                    DeviceType::InputOutput => {
+                        device.port_base = Some(x.addr as u32);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Some(device)
+    }
+
+    fn fill_headers(&mut self) {
+        self.vendor_id = self.read(0x00) as u16;
+        self.device_id = self.read(0x02) as u16;
+
+        self.class_id = self.read(0x0b) >> 8;
+        self.subclass_id = self.read(0x0a) & 0xff;
+        self.interface_id = self.read(0x09) as u8;
+
+        self.revision = self.read(0x08) as u8;
+        self.interrupt = self.read(0x3c) & 0x00ff;
+    }
+
+    fn get_base_addr_reg(&mut self, bar: u16) -> Option<BaseAddrReg> {
+        let hdr_type = self.read(0x0e) & 0x7f;
+
         if bar >= 6 - (4 * hdr_type) {
             return None;
         }
 
-        let bar_val = self.read32(bus, device, fun, (0x10 + 4 * bar).into());
+        let bar_val = self.read32((0x10 + 4 * bar).into());
+
         let dev_type = if (bar_val & 0x1) == 1 {
             DeviceType::InputOutput
         } else {
@@ -145,75 +141,86 @@ impl Pci {
         }
     }
 
-    fn set_mastering(&mut self, bus: u16, device: u16, fun: u16) {
-        let original_conf = self.read32(bus, device, fun, 0x04);
+    pub fn set_mastering(&mut self) {
+        let original_conf = self.read32(0x04);
         let next_conf = original_conf | 0x04;
 
-        let id: u32 = 0x1 << 31
-            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
-            | 0x04;
-
         unsafe {
-            self.command_port.write(id);
+            self.command_port.write(self.get_id(0x04));
             self.data_port.write(next_conf);
         }
 
-        let next = self.read32(bus, device, fun, 0x04);
-        println!("   Orign: {:#034b} New: {:#034b}", original_conf, next);
+        println!(
+            "[PCI] Done setting bitmastering for {:x}:{:x}",
+            self.vendor_id, self.device_id
+        );
     }
 
-    #[allow(dead_code)]
-    fn set_enable_int(&mut self, bus: u16, device: u16, fun: u16) {
-        let original_conf = self.read32(bus, device, fun, 0x04);
+    pub fn set_enable_int(&mut self) {
+        let original_conf = self.read32(0x04);
         let next_conf = original_conf | 0x04;
 
-        let id: u32 = 0x1 << 31
-            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
-            | 0x04;
-
         unsafe {
-            self.command_port.write(id);
+            self.command_port.write(self.get_id(0x04));
             self.data_port.write(next_conf);
         }
 
-        let next = self.read32(bus, device, fun, 0x04);
-        println!("   Orign: {:#034b} New: {:#034b}", original_conf, next);
+        println!(
+            "[PCI] Done enabling interrupts for {:x}:{:x}",
+            self.vendor_id, self.device_id
+        );
     }
 
-    fn set_interrupt(&mut self, bus: u16, device: u16, fun: u16) {
-        let id: u32 = 0x1 << 31
-            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
-            | 0x3c;
-
-        let new_int = 0xff02;
-
+    pub fn set_interrupt(&mut self, int: u32) {
         unsafe {
-            self.command_port.write(id);
-            self.data_port.write(new_int);
+            self.command_port.write(self.get_id(0x3c));
+            self.data_port.write(int);
+        }
+
+        println!(
+            "[PCI] Done setting interrupt to {} for {:x}:{:x}",
+            int, self.vendor_id, self.device_id
+        );
+    }
+
+    fn read(&mut self, offset: u32) -> u16 {
+        unsafe {
+            self.command_port.write(self.get_id(offset & 0xfc));
+            (self.data_port.read() >> (8 * (offset & 2)) & 0xffff) as u16
         }
     }
 
-    fn read(&mut self, bus: u16, device: u16, fun: u16, offset: u32) -> u16 {
-        let id: u32 = 0x1 << 31
-            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
-            | (offset & 0xfc);
-
+    fn read32(&mut self, offset: u32) -> u32 {
         unsafe {
-            self.command_port.write(id);
+            self.command_port.write(self.get_id(offset & 0xfc));
+            self.data_port.read()
         }
-
-        unsafe { (self.data_port.read() >> (8 * (offset & 2)) & 0xffff) as u16 }
     }
 
-    fn read32(&mut self, bus: u16, device: u16, fun: u16, offset: u32) -> u32 {
-        let id: u32 = 0x1 << 31
-            | ((bus as u32) << 16 | (device as u32) << 11 | (fun as u32) << 8) as u32
-            | (offset & 0xfc);
+    fn get_id(&self, offset: u32) -> u32 {
+        0x1 << 31
+            | ((self.bus as u32) << 16 | (self.device as u32) << 11 | (self.function as u32) << 8)
+                as u32
+            | offset
+    }
+}
 
-        unsafe {
-            self.command_port.write(id);
+impl Default for Device {
+    fn default() -> Self {
+        Self {
+            bus: 0,
+            device: 0,
+            function: 0,
+            data_port: Port::new(0xcfc),
+            command_port: Port::new(0xcf8),
+            vendor_id: 0,
+            device_id: 0,
+            class_id: 0,
+            subclass_id: 0,
+            interface_id: 0,
+            revision: 0,
+            interrupt: 0,
+            port_base: None,
         }
-
-        unsafe { self.data_port.read() }
     }
 }
