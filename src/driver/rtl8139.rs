@@ -68,8 +68,8 @@ impl RTL8139 {
 
         unsafe {
             self.rbstart.write(physical.as_u64() as u32);
-            //    self.imr.write(0x809f);
-            self.imr.write(0x0005);
+            self.imr.write(0x809f);
+            // self.imr.write(0x0005);
             self.wrap.write(0xf | (1 << 7));
             self.cmd_reg.write(0x0c);
         }

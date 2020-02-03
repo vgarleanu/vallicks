@@ -199,8 +199,7 @@ impl Device {
 
     fn get_id(&self, offset: u32) -> u32 {
         0x1 << 31
-            | ((self.bus as u32) << 16 | (self.device as u32) << 11 | (self.function as u32) << 8)
-                as u32
+            | (self.bus as u32) << 16 | (self.device as u32) << 11 | (self.function as u32) << 8
             | offset
     }
 }
