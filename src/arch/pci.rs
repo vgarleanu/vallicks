@@ -6,7 +6,7 @@ pub struct Pci {
     pub devices: Vec<Device>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Device {
     pub bus: u16,
     pub device: u16,
@@ -46,7 +46,7 @@ impl Pci {
     }
 
     pub fn enumerate(&mut self) {
-        println!("[PCI] Starting enumeration");
+        println!("pci: Starting enumeration");
         for bus in 0..8 {
             for dev in 0..32 {
                 for fnt in 0..8 {
@@ -57,7 +57,7 @@ impl Pci {
             }
         }
         self.devices.sort_by(|a, b| a.device_id.cmp(&b.device_id));
-        println!("[PCI] Enumerated {} devices:", self.devices.len());
+        println!("pci: Enumerated {} devices:", self.devices.len());
         for device in self.devices.iter() {
             println!(
                 "       Bus: {} Device: {} ID: {:x}:{:x} Class: {:x}:{:x}",
@@ -151,7 +151,7 @@ impl Device {
         }
 
         println!(
-            "[PCI] Done setting bitmastering for {:x}:{:x}",
+            "pci: Done setting bitmastering for {:x}:{:x}",
             self.vendor_id, self.device_id
         );
     }
@@ -166,7 +166,7 @@ impl Device {
         }
 
         println!(
-            "[PCI] Done enabling interrupts for {:x}:{:x}",
+            "pci: Done enabling interrupts for {:x}:{:x}",
             self.vendor_id, self.device_id
         );
     }
@@ -178,7 +178,7 @@ impl Device {
         }
 
         println!(
-            "[PCI] Done setting interrupt to {} for {:x}:{:x}",
+            "pci: Done setting interrupt to {} for {:x}:{:x}",
             int, self.vendor_id, self.device_id
         );
     }
@@ -199,7 +199,9 @@ impl Device {
 
     fn get_id(&self, offset: u32) -> u32 {
         0x1 << 31
-            | (self.bus as u32) << 16 | (self.device as u32) << 11 | (self.function as u32) << 8
+            | (self.bus as u32) << 16
+            | (self.device as u32) << 11
+            | (self.function as u32) << 8
             | offset
     }
 }

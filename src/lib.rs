@@ -49,13 +49,13 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 pub fn init(boot_info: &'static BootInfo) {
     arch::cpu::cpu_info();
     arch::gdt::init_gdt();
-    println!("[GDT] GDT init done...");
+    println!("gdt: GDT init done...");
 
     /* We first create the allocator, because the itnerrupt handlers use some allocations
      * internally
      */
     unsafe { arch::interrupts::PICS.lock().initialize() };
-    println!("[PIC] PIC init done...");
+    println!("pic: PIC init done...");
     arch::interrupts::init_idt();
 
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
@@ -64,14 +64,14 @@ pub fn init(boot_info: &'static BootInfo) {
 
     arch::allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("Failed to initialize heap");
-    println!("[ALLOC] Allocator init done...");
+    println!("alloc: Allocator init done...");
 
     //init_scheduler(mapper, frame_allocator);
 
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
     arch::pit::init();
     x86_64::instructions::interrupts::enable();
-    println!("[INT] Ok");
+    println!("int: Ok");
 }
 
 pub fn exit(exit_code: ExitCode) {

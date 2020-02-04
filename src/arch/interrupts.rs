@@ -1,10 +1,11 @@
 use crate::{arch::gdt, arch::pit::tick, prelude::*, schedule::schedule};
 use alloc::{boxed::Box, vec::Vec};
 use arraydeque::{ArrayDeque, Wrapping};
+use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pic8259_simple::ChainedPics;
-use spin::Mutex;
+use spin::{Mutex, RwLock};
 use x86_64::{
     instructions::port::Port,
     registers::control::Cr2,
@@ -14,9 +15,10 @@ use x86_64::{
 macro_rules! make_int_handler {
     ($name:ident => $int:expr) => {
         extern "x86-interrupt" fn $name(_frame: &mut InterruptStackFrame) {
-            let lock = INT_TABLE.lock();
-            for handler in lock.iter() {
-                handler($int);
+            let lock = INT_TABLE.read();
+            // NOTE: Maybe figure out a better way to do async interrupt handling?
+            if let Some(x) = lock.get(&$int) {
+                x();
             }
             unsafe {
                 PICS.lock().notify_end_of_interrupt($int);
@@ -35,7 +37,8 @@ lazy_static! {
     static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(
         Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore)
     );
-    static ref INT_TABLE: Mutex<Vec<Box<dyn Fn(i32) + Send + 'static>>> = Mutex::new(Vec::new());
+    static ref INT_TABLE: RwLock<HashMap<i32, Box<dyn Fn() + Send + Sync + 'static>>> =
+        RwLock::new(HashMap::new());
     static ref INPUT_BUFFER: Mutex<ArrayDeque<[char; 64], Wrapping>> =
         Mutex::new(ArrayDeque::new());
     static ref IDT: InterruptDescriptorTable = {
@@ -58,7 +61,7 @@ lazy_static! {
         idt[40].set_handler_fn(int40);
         idt[41].set_handler_fn(int41);
         idt[42].set_handler_fn(int42);
-        idt[43].set_handler_fn(test_43);
+        idt[43].set_handler_fn(int43);
         idt[44].set_handler_fn(int44);
         idt[45].set_handler_fn(int45);
         idt[46].set_handler_fn(int46);
@@ -68,7 +71,13 @@ lazy_static! {
     };
 }
 
-pub fn register_interrupt(handler: Box<dyn Fn() + 'static>) {}
+pub fn register_interrupt<T>(interrupt: i32, handler: T)
+where
+    T: Fn() + Send + Sync + 'static,
+{
+    let mut lock = INT_TABLE.write();
+    lock.insert(interrupt, Box::new(handler));
+}
 
 pub fn pop_buffer() -> Option<char> {
     INPUT_BUFFER.lock().pop_front()
@@ -79,7 +88,7 @@ pub fn init_idt() {
     unsafe {
         PICS.lock().notify_end_of_interrupt(32 + 11);
     }
-    println!("[IDT] Interrupt setup done...");
+    println!("idt: Interrupt setup done...");
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
@@ -136,15 +145,6 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 
     unsafe {
         PICS.lock().notify_end_of_interrupt(33);
-    }
-}
-
-extern "x86-interrupt" fn test_43(_: &mut InterruptStackFrame) {
-    println!("LELELELE  43");
-    unsafe {
-        let mut p: Port<u16> = Port::new(0xc000 + 0x3e);
-        p.write(0xff);
-        PICS.lock().notify_end_of_interrupt(43);
     }
 }
 
