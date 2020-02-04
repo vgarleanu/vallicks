@@ -85,9 +85,6 @@ pub fn pop_buffer() -> Option<char> {
 
 pub fn init_idt() {
     IDT.load();
-    unsafe {
-        PICS.lock().notify_end_of_interrupt(32 + 11);
-    }
     println!("idt: Interrupt setup done...");
 }
 
@@ -148,8 +145,6 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
     }
 }
 
-// FIXME: Figure out a way to maybe make a generic handler which can grab the interrupt it is
-// handling atm
 make_int_handler!(int34 => 34);
 make_int_handler!(int35 => 35);
 make_int_handler!(int36 => 36);

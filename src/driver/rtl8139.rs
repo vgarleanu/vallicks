@@ -126,11 +126,29 @@ impl RTL8139 {
     fn handle_int(inner: Arc<RwLock<RTL8139Inner>>) {
         let mut inner = inner.write();
         let isr = unsafe { inner.ack.read() };
-        println!("ISR: {:#018b}", isr);
-        unsafe {
-            inner.ack.write(0xff);
+
+        if (isr & (1 << 0)) != 0 {
+            println!("rtl8139: ROK");
         }
-        let isr = unsafe { inner.ack.read() };
-        println!("ISR: {:#018b}", isr);
+
+        if (isr & (1 << 2)) != 0 {
+            println!("rtl8139: TOK");
+        }
+
+        if (isr & (1 << 1)) != 0 {
+            println!("rtl8139: RxErr");
+        }
+
+        if (isr & (1 << 3)) != 0 {
+            println!("rtl8139: TxErr");
+        }
+
+        if (isr & (1 << 15)) != 0 {
+            println!("rtl8139: SysErr");
+        }
+
+        unsafe {
+            inner.ack.write(isr);
+        }
     }
 }
