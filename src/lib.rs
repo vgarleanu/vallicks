@@ -19,6 +19,7 @@ pub mod arch;
 pub mod driver;
 pub mod prelude;
 pub mod schedule;
+pub mod net;
 
 #[allow(unused_imports)]
 use crate::{

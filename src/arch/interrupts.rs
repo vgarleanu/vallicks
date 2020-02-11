@@ -1,5 +1,5 @@
 use crate::{arch::gdt, arch::pit::tick, prelude::*, schedule::schedule};
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box};
 use arraydeque::{ArrayDeque, Wrapping};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;

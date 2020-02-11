@@ -1,6 +1,6 @@
 use crate::arch::pci::Device;
 use crate::prelude::*;
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{ vec::Vec};
 use lazy_static::lazy_static;
 use spin::Mutex;
 
@@ -22,7 +22,7 @@ pub enum NetworkDriver {
 
 impl Driver {
     pub fn load(devices: &mut Vec<Device>) {
-        for mut device in devices {
+        for device in devices {
             if device.class_id == 0x2 {
                 if let Some(x) = NetworkDriver::load(device.clone()) {
                     let mut lock = DRIVERS.lock();
