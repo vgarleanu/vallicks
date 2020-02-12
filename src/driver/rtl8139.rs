@@ -7,6 +7,8 @@ use spin::RwLock;
 use x86_64::instructions::port::Port;
 use x86_64::VirtAddr;
 
+const RX_BUF_LEN: usize = 8192 + 16;
+
 // Bit flags specific to the RCR
 const APM: u32 = 1 << 1;
 const AB: u32 = 1 << 3;
@@ -17,6 +19,7 @@ const RXFTH_NONE: u32 = 0b111 << 13;
 const RST: u8 = 1 << 4;
 const RX_ENABLE: u8 = 1 << 3;
 const TX_ENABLE: u8 = 1 << 2;
+const RX_BUF_EMPTY: u8 = 1 << 0;
 
 // Bit flags specific to the C+CR
 const RX_CHK_SUM: u16 = 1 << 5;
@@ -38,7 +41,11 @@ struct RTL8139Inner {
     pub rbstart: Port<u32>,
     pub imr: Port<u16>,
     pub rcr: Port<u32>,
-    pub buffer: Box<[u8; 8192 + 16 + 1500]>,
+
+    pub buffer: Box<[u8; RX_BUF_LEN]>,
+    pub rx_cursor: usize,
+
+    pub tx_buffer: Box<[u8; 8192 + 16 + 1500]>,
     pub tx_dat: [Port<u32>; 4],
     pub tx_cmd: [Port<u32>; 4],
     pub current: usize,
@@ -50,6 +57,9 @@ struct RTL8139Inner {
 
     pub rdsar_l: Port<u32>,
     pub rdsar_h: Port<u32>,
+
+    pub tndps_l: Port<u32>,
+    pub tndps_h: Port<u32>,
 
     frames: Vec<Ether2Frame>,
 }
@@ -67,7 +77,11 @@ impl RTL8139 {
             rbstart: Port::new(base + 0x30),
             imr: Port::new(base + 0x3c),
             rcr: Port::new(base + 0x44),
-            buffer: Box::new([0u8; 8192 + 16 + 1500]),
+
+            buffer: Box::new([0u8; RX_BUF_LEN]),
+            rx_cursor: 0,
+
+            tx_buffer: Box::new([0u8; 8192 + 16 + 1500]),
             tx_dat: [
                 Port::new(base + 0x20),
                 Port::new(base + 0x24),
@@ -89,6 +103,9 @@ impl RTL8139 {
 
             rdsar_l: Port::new(base + 0xe4),
             rdsar_h: Port::new(base + 0xe8),
+
+            tndps_l: Port::new(base + 0x20),
+            tndps_h: Port::new(base + 0x24),
 
             frames: Vec::new(),
         };
@@ -115,12 +132,20 @@ impl RTL8139 {
             }
         }
 
-        let ptr = VirtAddr::from_ptr(inner.buffer.as_ptr());
-        let physical = unsafe { translate_addr(ptr).unwrap() }.as_u64();
+        let rx_ptr = VirtAddr::from_ptr(inner.buffer.as_ptr());
+        let rx_physical = unsafe { translate_addr(rx_ptr).unwrap() }.as_u64();
+
+        let tx_ptr = VirtAddr::from_ptr(inner.tx_buffer.as_ptr());
+        let tx_physical = unsafe { translate_addr(tx_ptr).unwrap() }.as_u64();
 
         println!(
-            "rtl8139: Setting RX buffer to VirtAddr: {:?} PhysAddr: {:?}",
-            ptr, physical
+            "rtl8139: Setting Rx buffer to VirtAddr: {:?} PhysAddr: {:#x?}",
+            rx_ptr, rx_physical
+        );
+
+        println!(
+            "rtl8139: Setting Tx buffer to VirtAddr: {:?} PhysAddr: {:#x?}",
+            tx_ptr, tx_physical
         );
 
         // Unsafe block specific for pre-launch NIC config
@@ -132,15 +157,27 @@ impl RTL8139 {
             inner.rcr.write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE);
 
             // Enable Tx on the CR register
-            inner.cmd_reg.write(TX_ENABLE);
+            inner.cmd_reg.write(RX_ENABLE | TX_ENABLE);
 
+            /*
             // Enable C+ Mode
             inner.cpcr.write(RX_CHK_SUM | CPRX | CPTX);
 
             // Setup the Rx Ring buffer addrs for the NIC
-            // NOTE: Val, tbf we dont really need to write high bits for the phys address
-            inner.rdsar_l.write((physical & 0xffffffff) as u32);
-            inner.rdsar_h.write(((physical >> 32) & 0xffffffff) as u32);
+            // NOTE:  tbf we dont really need to write high bits for the phys address
+            inner.rdsar_l.write((rx_physical & 0xffffffff) as u32);
+            inner
+                .rdsar_h
+                .write(((rx_physical >> 32) & 0xffffffff) as u32);
+
+            // Setup the Tx Ring buffer addrs for the NIC
+            inner.tndps_l.write((tx_physical & 0xffffffff) as u32);
+            inner
+                .tndps_h
+                .write(((tx_physical >> 32) & 0xffffffff) as u32);
+            */
+
+            inner.rbstart.write(rx_physical as u32);
         }
 
         println!("rtl8139: Config done...");
@@ -161,6 +198,7 @@ impl RTL8139 {
             inner
                 .imr
                 .write(RX_OK | TX_OK | RX_ERR | TX_ERR | SYS_ERR | RDU | TDU);
+            inner.imr.write(0xffff);
         }
     }
 
@@ -214,9 +252,15 @@ impl RTL8139 {
             println!("rtl8139: TxErr");
         }
 
+        if (isr & (1 << 4)) != 0 {
+            println!("rtl8139: Rx Buffer Overflow");
+        }
+
         if (isr & (1 << 15)) != 0 {
             println!("rtl8139: SysErr");
         }
+
+        println!("Reg: {:b}", isr);
 
         unsafe {
             inner.ack.write(isr);
@@ -226,18 +270,39 @@ impl RTL8139 {
 
 impl RTL8139Inner {
     fn rok(&mut self) {
-        let length = u16::from_le_bytes(self.buffer[2..4].try_into().expect("Got wrong len")) - 4;
-        println!("rtl8139: len {}", length);
+        let c = self.rx_cursor % RX_BUF_LEN;
+        println!("Header: {:x?}", self.buffer[c..c + 4].to_vec());
+        let length =
+            u16::from_le_bytes(self.buffer[c + 2..c + 4].try_into().expect("Got wrong len"));
 
-        //        println!("{:x?}", self.buffer[4..length as usize].to_vec());
-        let frame = Ether2Frame::from_bytes(&self.buffer[4..length as usize]);
+        if length < 1 {
+            println!("Almost panicked :) idx: {}", self.rx_cursor);
+            return;
+        }
+
+        let length = length - 4;
+        println!("rtl8139: len {} {}", length, c);
+
+        let frame = Ether2Frame::from_bytes(&self.buffer[c + 4..c + length as usize]);
+        self.buffer[c+4] = 0xab;
+
         println!("{:?}", frame);
         self.frames.push(frame);
 
-        unsafe {
-            self.capr.write((length + 4 + 3) & !3) // will reseting the offset to 0 fix?
+        self.rx_cursor += (length as usize + 4 + 3) & !3;
+        if self.rx_cursor >= 3572 {
+            self.rx_cursor = 0x10;
         }
 
-        //    self.cur_rx = (self.cur_rx + 1) % 4;
+        unsafe {
+            println!("{}", self.rx_cursor);
+            self.capr.write((self.rx_cursor - 0x10) as u16) // will reseting the offset to 0 fix?
+        }
+
+        if self.rx_cursor == 0x10 {
+            self.rx_cursor = 0;
+            return;
+        }
+        self.rx_cursor += 4;
     }
 }

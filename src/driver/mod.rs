@@ -53,7 +53,7 @@ impl NetworkDriver {
             driver.init();
 
             let test = [128u8; 126];
-            driver.write(&test);
+//            driver.write(&test);
             return Some(NetworkDriver::RTL8139(driver));
         }
         None
