@@ -7,13 +7,16 @@ use spin::RwLock;
 use x86_64::instructions::port::Port;
 use x86_64::VirtAddr;
 
-const RX_BUF_LEN: usize = 8192 + 16;
-
+const RX_BUF_WRAP: usize = 1500; // Extra 1500 bytes with a WRAP mask for Rx because i really cant be fucked
+const RX_BUF_PAD: usize = 16;
+const RX_BUF_LEN: usize = 8192;
+const RX_BUF_LEN_WRAPPED: usize = RX_BUF_LEN + RX_BUF_PAD + RX_BUF_WRAP;
 // Bit flags specific to the RCR
-const APM: u32 = 1 << 1;
-const AB: u32 = 1 << 3;
-const MXDMA_UNLIMITED: u32 = 0b111 << 8;
-const RXFTH_NONE: u32 = 0b111 << 13;
+const APM: u32 = 0b10;
+const AB: u32 = 0b1000;
+const MXDMA_UNLIMITED: u32 = 0b111_0000_0000;
+const RXFTH_NONE: u32 = 0b1110_0000_0000_0000;
+const WRAP: u32 = 0b1000_0000;
 
 // Bit flags specific to the CR
 const RST: u8 = 1 << 4;
@@ -42,7 +45,7 @@ struct RTL8139Inner {
     pub imr: Port<u16>,
     pub rcr: Port<u32>,
 
-    pub buffer: Box<[u8; RX_BUF_LEN]>,
+    pub buffer: [u8; RX_BUF_LEN_WRAPPED],
     pub rx_cursor: usize,
 
     pub tx_buffer: Box<[u8; 8192 + 16 + 1500]>,
@@ -78,7 +81,7 @@ impl RTL8139 {
             imr: Port::new(base + 0x3c),
             rcr: Port::new(base + 0x44),
 
-            buffer: Box::new([0u8; RX_BUF_LEN]),
+            buffer: [0u8; RX_BUF_LEN_WRAPPED],
             rx_cursor: 0,
 
             tx_buffer: Box::new([0u8; 8192 + 16 + 1500]),
@@ -100,7 +103,6 @@ impl RTL8139 {
             cpcr: Port::new(base + 0xe0),
             device,
             capr: Port::new(base + 0x38),
-
             rdsar_l: Port::new(base + 0xe4),
             rdsar_h: Port::new(base + 0xe8),
 
@@ -154,7 +156,9 @@ impl RTL8139 {
             // Accept Broadcast packets
             // Enable Max DMA burst
             // No RX Threshold
-            inner.rcr.write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE);
+            inner
+                .rcr
+                .write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
 
             // Enable Tx on the CR register
             inner.cmd_reg.write(RX_ENABLE | TX_ENABLE);
@@ -198,13 +202,15 @@ impl RTL8139 {
             inner
                 .imr
                 .write(RX_OK | TX_OK | RX_ERR | TX_ERR | SYS_ERR | RDU | TDU);
-            inner.imr.write(0xffff);
         }
     }
 
     pub fn write(&mut self, data: &[u8]) {
         // FIXME: Deadlock occurs if we dont disable and then re-enable interrupts after a write to
         //        device. Figure out a way to avoid these.
+        //
+        // TODO: Instead of disabling CPU interrupts, maybe we can turn off PCI interrupts for this
+        //       particular device. Should prove way more efficient.
         x86_64::instructions::interrupts::disable();
         {
             let current = {
@@ -269,40 +275,45 @@ impl RTL8139 {
 }
 
 impl RTL8139Inner {
+    /// Function called on a ROK interrupt from the RTL8139 NIC, it parses the data written into
+    /// the buffer as a ethernet frame and pushes it into our Vec.
     fn rok(&mut self) {
-        let c = self.rx_cursor % RX_BUF_LEN;
-        println!("Header: {:x?}", self.buffer[c..c + 4].to_vec());
-        let length =
-            u16::from_le_bytes(self.buffer[c + 2..c + 4].try_into().expect("Got wrong len"));
+        // A packet frame looks something like this
+        // +--------------------------------------------+
+        // | |     HEADER     |            |   DATA   | |
+        // | +----------------+            +----------+ |
+        // | |??|len = 2 bytes| = 4 bytes  |data = len| |
+        // | +----------------+            +----------+ |
+        // +--------------------------------------------+
+        //
+        // As per the diagram the packet structure is a 4 byte header where the last 2 bytes is the
+        // length of the incoming data.
+        // The length given also includes the length of the header itself.
+        let buffer = &self.buffer[self.rx_cursor..];
+        let length = u16::from_le_bytes(buffer[2..4].try_into().expect("Got wrong len")) as usize;
 
-        if length < 1 {
-            println!("Almost panicked :) idx: {}", self.rx_cursor);
-            return;
-        }
+        // NOTE: The length in the header will never be less than 64, if a packet is received that
+        //       has a length less than 64, the NIC will simply pad the packet with 0x00.
+        assert!(length >= 64);
 
-        let length = length - 4;
-        println!("rtl8139: len {} {}", length, c);
-
-        let frame = Ether2Frame::from_bytes(&self.buffer[c + 4..c + length as usize]);
-        self.buffer[c+4] = 0xab;
-
-        println!("{:?}", frame);
+        // NOTE: We are currently not zeroing out memory after a packet has been parsed and pushed.
+        //       Are we sure that if packets with length less than 64 bytes will not contain
+        //       remnants of the old packets?
+        let frame = Ether2Frame::from_bytes(&self.buffer[4..length - 4]);
         self.frames.push(frame);
 
-        self.rx_cursor += (length as usize + 4 + 3) & !3;
-        if self.rx_cursor >= 3572 {
-            self.rx_cursor = 0x10;
-        }
+        // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
+        // always point to the start of the header.
+        // To calculate the new cursor we add the length of the previous frame which SHOULD include
+        // the 4 bytes for the header, we also add 3 for 32 bit alignment and then mask the result.
+        self.rx_cursor = (self.rx_cursor + length as usize + 4 + 3) & !3;
 
         unsafe {
-            println!("{}", self.rx_cursor);
-            self.capr.write((self.rx_cursor - 0x10) as u16) // will reseting the offset to 0 fix?
+            // The NIC is then informed of the new cursor. We remove 0x10 to avoid a overflow as
+            // the NIC takes the padding into account I think.
+            self.capr.write((self.rx_cursor - 0x10) as u16);
         }
 
-        if self.rx_cursor == 0x10 {
-            self.rx_cursor = 0;
-            return;
-        }
-        self.rx_cursor += 4;
+        self.rx_cursor = self.rx_cursor % RX_BUF_LEN;
     }
 }
