@@ -27,6 +27,7 @@ menu = "0.3.2"
 arraydeque = { version = "0.4.5", default-features = false }
 x86 = "0.29.0"
 hashbrown = "0.7.0"
+buddy_system_allocator = "0.3.6"
 
 [profile.dev]
 panic = "abort"
