@@ -1,0 +1,15 @@
+[package]
+name = "pic8259_simple"
+version = "0.1.0"
+authors = ["Eric Kidd <git@randomhacks.net>", "Valerian G. <valerian.garleanu@pm.me"]
+
+description = "Kernel-space interface to the 8259 and 8259A interrupt controllers, with a 0x00 IRQ mask enabling all lanes"
+homepage = "https://github.com/emk/toyos-rs/tree/master/crates/pic8259_simple"
+repository = "https://github.com/emk/toyos-rs"
+readme = "README.md"
+keywords = ["no_std", "kernel", "interrupts"]
+license = "Apache-2.0/MIT"
+
+[dependencies.cpuio]
+version = "0.2.0"
+path = "../cpuio"
