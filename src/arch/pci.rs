@@ -41,12 +41,13 @@ pub enum DeviceType {
 impl Pci {
     pub fn new() -> Self {
         Self {
-            devices: Vec::new(),
+            devices: Vec::with_capacity(2048),
         }
     }
 
     pub fn enumerate(&mut self) {
         println!("pci: Starting enumeration");
+        println!("Vec at: {:#x}", self.devices.as_ptr() as u32);
         for bus in 0..8 {
             for dev in 0..32 {
                 for fnt in 0..8 {
@@ -56,6 +57,7 @@ impl Pci {
                 }
             }
         }
+
         self.devices.sort_by(|a, b| a.device_id.cmp(&b.device_id));
         println!("pci: Enumerated {} devices:", self.devices.len());
         for device in self.devices.iter() {

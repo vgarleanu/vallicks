@@ -4,10 +4,12 @@
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139_ProgrammersGuide.pdf
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139D_DataSheet.pdf
 
-use crate::arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device};
-use crate::net::ip::Ether2Frame;
-use crate::prelude::*;
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use crate::{
+    arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device},
+    net::ip::Ether2Frame,
+    prelude::*,
+};
+use alloc::{sync::Arc, vec::Vec};
 use core::convert::TryInto;
 use spin::RwLock;
 use x86_64::instructions::port::Port;
@@ -132,7 +134,7 @@ impl RTL8139 {
         }
 
         let rx_ptr = VirtAddr::from_ptr(inner.buffer.as_ptr());
-        let rx_physical = unsafe { translate_addr(rx_ptr).unwrap() }.as_u64();
+        let rx_physical = unsafe { translate_addr(rx_ptr).expect("rtl8139: Failed to translate RxPtr from VirtAddr to PhysAddr") }.as_u64();
 
         println!(
             "rtl8139: Setting Rx buffer to VirtAddr: {:?} PhysAddr: {:#x?}",
@@ -258,7 +260,7 @@ impl RTL8139Inner {
 
         // NOTE: The length in the header will never be less than 64, if a packet is received that
         //       has a length less than 64, the NIC will simply pad the packet with 0x00.
-        assert!(length >= 64);
+        assert!(length >= 64, "rtl8139: ROK Len is less than 64. THIS IS A BUG.");
 
         // NOTE: We are currently not zeroing out memory after a packet has been parsed and pushed.
         //       Are we sure that if packets with length less than 64 bytes will not contain

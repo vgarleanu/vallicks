@@ -6,14 +6,11 @@
 
 extern crate alloc;
 
+use alloc::{string::String, vec::Vec};
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 #[allow(unused_imports)]
-use rust_kernel::{
-    arch::{pci, pit::get_milis},
-    driver::*,
-    prelude::*,
-};
+use rust_kernel::prelude::*;
 
 entry_point!(__kmain);
 
@@ -43,12 +40,8 @@ fn sleep_ever_s() {
 fn __kmain(boot_info: &'static BootInfo) -> ! {
     println!("Booting...");
     rust_kernel::init(boot_info);
-    let mut pci = pci::Pci::new();
-    pci.enumerate();
 
-    Driver::load(&mut pci.devices);
-
-    //thread::spawn(sleep_ever_s);
+    let mut test: Vec<String> = alloc::vec::Vec::new();
 
     println!("Booted...");
 

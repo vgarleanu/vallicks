@@ -17,23 +17,35 @@ extern crate alloc;
 
 pub mod arch;
 pub mod driver;
+pub mod net;
 pub mod prelude;
 pub mod schedule;
-pub mod net;
 
 #[allow(unused_imports)]
 use crate::{
-    arch::memory::{init as __meminit, BootInfoFrameAllocator},
+    arch::{
+        memory::{init as __meminit, BootInfoFrameAllocator},
+        pci,
+        pit::get_milis,
+    },
+    driver::*,
     schedule::init_scheduler,
 };
 use bootloader::BootInfo;
+use buddy_system_allocator::{Heap, LockedHeapWithRescue};
 use core::panic::PanicInfo;
-use linked_list_allocator::LockedHeap;
 use prelude::*;
 use x86_64::VirtAddr;
 
 #[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static ALLOCATOR: LockedHeapWithRescue = LockedHeapWithRescue::new(|heap: &mut Heap| {
+    let (start, size) = crate::arch::allocator::extend_heap().expect("Failed to extend heap");
+
+    println!("Extra heap {:#x} with size {:#x}", start, size);
+    unsafe {
+        heap.add_to_heap(start, start + size);
+    }
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -67,12 +79,17 @@ pub fn init(boot_info: &'static BootInfo) {
         .expect("Failed to initialize heap");
     println!("alloc: Allocator init done...");
 
-    //init_scheduler(mapper, frame_allocator);
+    init_scheduler(mapper, frame_allocator);
 
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
     arch::pit::init();
     x86_64::instructions::interrupts::enable();
     println!("int: Ok");
+
+    let mut pci = pci::Pci::new();
+    pci.enumerate();
+
+    Driver::load(&mut pci.devices);
 }
 
 pub fn exit(exit_code: ExitCode) {

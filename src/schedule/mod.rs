@@ -13,8 +13,10 @@ use switch::context_switch_to;
 use thread::{Thread, ThreadId};
 
 pub(super) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
-pub(super) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
-pub(super) static ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
+
+// TODO: Move these into lib.rs or arch/mod.rs
+pub(crate) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
+pub(crate) static ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
 pub fn init_scheduler(
     mapper: OffsetPageTable<'static>,
