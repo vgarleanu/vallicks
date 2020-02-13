@@ -1,3 +1,9 @@
+//! RTL8139 Network driver tested inside qemu.
+//! Based on:
+//! * http://www.jbox.dk/sanos/source/sys/dev/rtl8139.c.html
+//! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139_ProgrammersGuide.pdf
+//! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139D_DataSheet.pdf
+
 use crate::arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device};
 use crate::net::ip::Ether2Frame;
 use crate::prelude::*;
@@ -7,62 +13,59 @@ use spin::RwLock;
 use x86_64::instructions::port::Port;
 use x86_64::VirtAddr;
 
+// Here we define all the RX Buffer lengths that we are gonna use
+// NOTE: Make sure you do all your logic and math with RX_BUF_LEN as technically
+//       the padding bytes and the Wrap bytes shouldnt exist, seriously it took me a long long long
+//       time to figure out that you should do all the math for calculating the new cursor without
+//       also adding the padding length.
+const RX_BUF_LEN: usize = 8192;
 const RX_BUF_WRAP: usize = 1500; // Extra 1500 bytes with a WRAP mask for Rx because i really cant be fucked
 const RX_BUF_PAD: usize = 16;
-const RX_BUF_LEN: usize = 8192;
 const RX_BUF_LEN_WRAPPED: usize = RX_BUF_LEN + RX_BUF_PAD + RX_BUF_WRAP;
+
 // Bit flags specific to the RCR
 const APM: u32 = 0b10;
 const AB: u32 = 0b1000;
+const WRAP: u32 = 0b1000_0000;
 const MXDMA_UNLIMITED: u32 = 0b111_0000_0000;
 const RXFTH_NONE: u32 = 0b1110_0000_0000_0000;
-const WRAP: u32 = 0b1000_0000;
 
 // Bit flags specific to the CR
-const RST: u8 = 1 << 4;
-const RX_ENABLE: u8 = 1 << 3;
-const TX_ENABLE: u8 = 1 << 2;
-const RX_BUF_EMPTY: u8 = 1 << 0;
-
-// Bit flags specific to the C+CR
-const RX_CHK_SUM: u16 = 1 << 5;
-const CPRX: u16 = 1 << 1;
-const CPTX: u16 = 1 << 0;
+#[allow(dead_code)]
+const RX_BUF_EMPTY: u8 = 0b1;
+const TX_ENABLE: u8 = 0b100;
+const RX_ENABLE: u8 = 0b1000;
+const RST: u8 = 0b10000;
 
 // Bit flags for IMR
-const RX_OK: u16 = 1 << 0;
-const RX_ERR: u16 = 1 << 1;
-const TX_OK: u16 = 1 << 2;
-const TX_ERR: u16 = 1 << 3;
-const RDU: u16 = 1 << 4;
-const TDU: u16 = 1 << 7;
-const SYS_ERR: u16 = 1 << 15;
+const RX_OK: u16 = 0b1;
+const RX_ERR: u16 = 0b10;
+const TX_OK: u16 = 0b100;
+const TX_ERR: u16 = 0b1000;
+const RDU: u16 = 0b10000;
+const TDU: u16 = 0b1000_0000;
+const SYS_ERR: u16 = 0b1000_0000_0000_0000;
 
+/// This is our inner struct that holds all of our ports that we will use to talk with the nic, as
+/// well as our rx and tx buffers.
 struct RTL8139Inner {
+    pub device: Device,
     pub config_1: Port<u32>,
     pub cmd_reg: Port<u8>,
     pub rbstart: Port<u32>,
     pub imr: Port<u16>,
     pub rcr: Port<u32>,
-
-    pub buffer: [u8; RX_BUF_LEN_WRAPPED],
-    pub rx_cursor: usize,
-
-    pub tx_buffer: Box<[u8; 8192 + 16 + 1500]>,
-    pub tx_dat: [Port<u32>; 4],
-    pub tx_cmd: [Port<u32>; 4],
-    pub current: usize,
     pub tppoll: Port<u8>,
     pub ack: Port<u16>,
     pub cpcr: Port<u16>,
-    pub device: Device,
     pub capr: Port<u16>,
 
-    pub rdsar_l: Port<u32>,
-    pub rdsar_h: Port<u32>,
+    pub tx_dat: [Port<u32>; 4],
+    pub tx_cmd: [Port<u32>; 4],
+    pub tx_cursor: usize,
 
-    pub tndps_l: Port<u32>,
-    pub tndps_h: Port<u32>,
+    pub buffer: [u8; RX_BUF_LEN_WRAPPED],
+    pub rx_cursor: usize,
 
     frames: Vec<Ether2Frame>,
 }
@@ -75,16 +78,17 @@ impl RTL8139 {
     pub fn new(device: Device) -> Self {
         let base = device.port_base.unwrap() as u16;
         let inner = RTL8139Inner {
+            device,
             config_1: Port::new(base + 0x52),
             cmd_reg: Port::new(base + 0x37),
             rbstart: Port::new(base + 0x30),
             imr: Port::new(base + 0x3c),
             rcr: Port::new(base + 0x44),
+            tppoll: Port::new(base + 0xd9),
+            ack: Port::new(base + 0x3e),
+            cpcr: Port::new(base + 0xe0),
+            capr: Port::new(base + 0x38),
 
-            buffer: [0u8; RX_BUF_LEN_WRAPPED],
-            rx_cursor: 0,
-
-            tx_buffer: Box::new([0u8; 8192 + 16 + 1500]),
             tx_dat: [
                 Port::new(base + 0x20),
                 Port::new(base + 0x24),
@@ -97,17 +101,10 @@ impl RTL8139 {
                 Port::new(base + 0x18),
                 Port::new(base + 0x1c),
             ],
-            current: 0usize,
-            tppoll: Port::new(base + 0xd9),
-            ack: Port::new(base + 0x3e),
-            cpcr: Port::new(base + 0xe0),
-            device,
-            capr: Port::new(base + 0x38),
-            rdsar_l: Port::new(base + 0xe4),
-            rdsar_h: Port::new(base + 0xe8),
+            tx_cursor: 0,
 
-            tndps_l: Port::new(base + 0x20),
-            tndps_h: Port::new(base + 0x24),
+            buffer: [0u8; RX_BUF_LEN_WRAPPED],
+            rx_cursor: 0,
 
             frames: Vec::new(),
         };
@@ -137,17 +134,9 @@ impl RTL8139 {
         let rx_ptr = VirtAddr::from_ptr(inner.buffer.as_ptr());
         let rx_physical = unsafe { translate_addr(rx_ptr).unwrap() }.as_u64();
 
-        let tx_ptr = VirtAddr::from_ptr(inner.tx_buffer.as_ptr());
-        let tx_physical = unsafe { translate_addr(tx_ptr).unwrap() }.as_u64();
-
         println!(
             "rtl8139: Setting Rx buffer to VirtAddr: {:?} PhysAddr: {:#x?}",
             rx_ptr, rx_physical
-        );
-
-        println!(
-            "rtl8139: Setting Tx buffer to VirtAddr: {:?} PhysAddr: {:#x?}",
-            tx_ptr, tx_physical
         );
 
         // Unsafe block specific for pre-launch NIC config
@@ -163,24 +152,7 @@ impl RTL8139 {
             // Enable Tx on the CR register
             inner.cmd_reg.write(RX_ENABLE | TX_ENABLE);
 
-            /*
-            // Enable C+ Mode
-            inner.cpcr.write(RX_CHK_SUM | CPRX | CPTX);
-
-            // Setup the Rx Ring buffer addrs for the NIC
-            // NOTE:  tbf we dont really need to write high bits for the phys address
-            inner.rdsar_l.write((rx_physical & 0xffffffff) as u32);
-            inner
-                .rdsar_h
-                .write(((rx_physical >> 32) & 0xffffffff) as u32);
-
-            // Setup the Tx Ring buffer addrs for the NIC
-            inner.tndps_l.write((tx_physical & 0xffffffff) as u32);
-            inner
-                .tndps_h
-                .write(((tx_physical >> 32) & 0xffffffff) as u32);
-            */
-
+            // Write the PHYSICAL address of our Rx buffer to the NIC
             inner.rbstart.write(rx_physical as u32);
         }
 
@@ -206,67 +178,59 @@ impl RTL8139 {
     }
 
     pub fn write(&mut self, data: &[u8]) {
-        // FIXME: Deadlock occurs if we dont disable and then re-enable interrupts after a write to
-        //        device. Figure out a way to avoid these.
-        //
-        // TODO: Instead of disabling CPU interrupts, maybe we can turn off PCI interrupts for this
-        //       particular device. Should prove way more efficient.
-        x86_64::instructions::interrupts::disable();
-        {
-            let current = {
-                let reader = self.inner.read();
-                reader.current
-            };
+        let mut inner = self.inner.write();
 
-            let mut inner = self.inner.write();
+        // Disable interrupts for this PCI device to avoid deadlock to do with inner
+        inner.device.set_disable_int();
+
+        {
+            let cursor = inner.tx_cursor;
             let ptr = VirtAddr::from_ptr(data.as_ptr());
             let physical = unsafe { translate_addr(ptr).unwrap() }.as_u64() as u32;
 
             unsafe {
-                inner.tx_dat[current].write(physical);
-                inner.tx_cmd[current].write((data.len() as u32) & 0xfff);
+                inner.tx_dat[cursor].write(physical);
+                inner.tx_cmd[cursor].write((data.len() as u32) & 0xfff);
 
                 loop {
-                    if (inner.tx_cmd[current].read() & 0x8000) != 0 {
+                    if (inner.tx_cmd[cursor].read() & 0x8000) != 0 {
                         break;
                     }
                 }
             }
-
-            inner.current = (current + 1) % 4;
+            inner.tx_cursor = (cursor + 1) % 4;
         }
-        x86_64::instructions::interrupts::enable();
+
+        inner.device.set_enable_int();
     }
 
     fn handle_int(inner: Arc<RwLock<RTL8139Inner>>) {
         let mut inner = inner.write();
         let isr = unsafe { inner.ack.read() };
 
-        if (isr & (1 << 0)) != 0 {
+        if (isr & RX_OK) != 0 {
             inner.rok();
         }
 
-        if (isr & (1 << 2)) != 0 {
+        if (isr & TX_OK) != 0 {
             println!("rtl8139: TOK");
         }
 
-        if (isr & (1 << 1)) != 0 {
+        if (isr & RX_ERR) != 0 {
             println!("rtl8139: RxErr");
         }
 
-        if (isr & (1 << 3)) != 0 {
+        if (isr & TX_ERR) != 0 {
             println!("rtl8139: TxErr");
         }
 
-        if (isr & (1 << 4)) != 0 {
-            println!("rtl8139: Rx Buffer Overflow");
+        if (isr & (RDU | TDU)) != 0 {
+            println!("rtl8139: Rx/Tx Buffer Overflow");
         }
 
-        if (isr & (1 << 15)) != 0 {
+        if (isr & SYS_ERR) != 0 {
             println!("rtl8139: SysErr");
         }
-
-        println!("Reg: {:b}", isr);
 
         unsafe {
             inner.ack.write(isr);

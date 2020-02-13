@@ -1,6 +1,6 @@
 use crate::arch::pci::Device;
 use crate::prelude::*;
-use alloc::{ vec::Vec};
+use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
@@ -49,11 +49,10 @@ impl NetworkDriver {
 
             device.set_mastering();
             device.set_enable_int();
+
             let mut driver = rtl8139::RTL8139::new(device);
             driver.init();
 
-            let test = [128u8; 126];
-//            driver.write(&test);
             return Some(NetworkDriver::RTL8139(driver));
         }
         None

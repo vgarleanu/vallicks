@@ -158,17 +158,22 @@ impl Device {
 
     pub fn set_enable_int(&mut self) {
         let original_conf = self.read32(0x04);
-        let next_conf = original_conf | 0x04;
+        let next_conf = original_conf | (1 << 10);
 
         unsafe {
             self.command_port.write(self.get_id(0x04));
             self.data_port.write(next_conf);
         }
+    }
 
-        println!(
-            "pci: Done enabling interrupts for {:x}:{:x}",
-            self.vendor_id, self.device_id
-        );
+    pub fn set_disable_int(&mut self) {
+        let original_conf = self.read32(0x04);
+        let next_conf = original_conf & !(1 << 10);
+
+        unsafe {
+            self.command_port.write(self.get_id(0x04));
+            self.data_port.write(next_conf);
+        }
     }
 
     pub fn set_interrupt(&mut self, int: u32) {

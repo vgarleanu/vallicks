@@ -47,7 +47,6 @@ impl Ether2Frame {
             panic!("Received a ip frame with length < 10");
         }
 
-        println!("{:x}{:x}", data[12], data[13]);
         Self {
             dst: Mac::from_bytes(&data[..6]),
             src: Mac::from_bytes(&data[6..12]),
