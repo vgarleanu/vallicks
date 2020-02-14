@@ -1,0 +1,15 @@
+[package]
+name = "vallicks-macros"
+version = "0.1.0"
+authors = ["Valerian Garleanu <valerian.garleanu@pm.me>"]
+edition = "2018"
+license = "MIT"
+description = "Proc macros for the vallicks unikernel"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.7"
+quote = "1"
+syn = { version = "1.0.14", features = ["full"] }

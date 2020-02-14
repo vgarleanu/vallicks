@@ -30,7 +30,7 @@ pub fn init_scheduler(
 
     let mut lock = ALLOCATOR.lock();
     *lock = Some(frame_allocator);
-    println!("[SCHED] Scheduler setup done...");
+    println!("scheduler: Scheduler setup done...");
 }
 
 pub(crate) fn schedule() {

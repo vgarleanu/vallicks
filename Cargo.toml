@@ -1,6 +1,6 @@
 [package]
-name = "rust_kernel"
-version = "0.1.0"
+name = "vallicks"
+version = "0.1.1"
 authors = ["Valerian G. <valerian.garleanu@pm.me>"]
 edition = "2018"
 
@@ -28,6 +28,7 @@ arraydeque = { version = "0.4.5", default-features = false }
 x86 = "0.29.0"
 hashbrown = "0.7.0"
 buddy_system_allocator = "0.3.6"
+vallicks-macros = { path = "./libs/vallicks_macros" }
 
 [profile.dev]
 panic = "abort"

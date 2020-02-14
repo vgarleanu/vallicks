@@ -1,18 +1,16 @@
 #![no_std]
 #![cfg_attr(test, no_main)]
-#![feature(abi_x86_interrupt)]
-#![feature(custom_test_frameworks)]
-#![feature(asm)]
-#![feature(alloc_error_handler)]
-#![feature(naked_functions)]
-#![feature(option_expect_none)]
-#![feature(raw)]
-#![feature(try_trait)]
-#![feature(never_type)]
-#![feature(global_asm)]
-#![test_runner(crate::test_runner)]
-#![reexport_test_harness_main = "test_main"]
-
+#![feature(
+    abi_x86_interrupt,
+    asm,
+    alloc_error_handler,
+    naked_functions,
+    option_expect_none,
+    raw,
+    try_trait,
+    never_type,
+    global_asm
+)]
 extern crate alloc;
 
 pub mod arch;
@@ -107,17 +105,8 @@ pub fn hlt_loop() -> ! {
     }
 }
 
-pub fn test_runner(tests: &[&dyn Fn()]) {
-    sprintln!("Running {} tests", tests.len());
-    for test in tests {
-        test();
-    }
-    exit(ExitCode::Success);
-}
-
-pub fn test_panic_handler(info: &PanicInfo) -> ! {
-    sprintln!("[failed]\n");
-    sprintln!("Error: {}\n", info);
-    exit(ExitCode::Failed);
-    hlt_loop();
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
+    halt();
 }

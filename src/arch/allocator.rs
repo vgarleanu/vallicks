@@ -1,4 +1,3 @@
-use buddy_system_allocator::Heap;
 use x86_64::{
     structures::paging::{
         mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
@@ -39,10 +38,10 @@ pub fn init_heap(
 
 pub fn extend_heap() -> Result<(usize, usize), MapToError> {
     let mut mlock = crate::schedule::MAPPER.lock();
-    let mut mapper = mlock.as_mut().expect("Mlock was empty lol");
+    let mapper = mlock.as_mut().expect("Mlock was empty lol");
 
     let mut flock = crate::schedule::ALLOCATOR.lock();
-    let mut frame_allocator = flock.as_mut().expect("Flock is empty");
+    let frame_allocator = flock.as_mut().expect("Flock is empty");
 
     let page_range = {
         let heap_start = VirtAddr::new(unsafe { HEAP_LAST } as u64);
