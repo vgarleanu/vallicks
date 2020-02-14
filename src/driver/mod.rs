@@ -4,20 +4,26 @@ use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
+pub mod keyboard;
 pub mod rtl8139;
 pub mod serial;
 pub mod vga;
 
 lazy_static! {
-    pub static ref DRIVERS: Mutex<Vec<Driver>> = Mutex::new(Vec::new());
+    pub static ref DRIVERS: Mutex<Vec<Driver>> = Mutex::new(Vec::with_capacity(5));
 }
 
 pub enum Driver {
     NetworkDriver(NetworkDriver),
+    KeyboardDriver(KeyboardDriver),
 }
 
 pub enum NetworkDriver {
     RTL8139(rtl8139::RTL8139),
+}
+
+pub enum KeyboardDriver {
+    Simple(keyboard::Keyboard),
 }
 
 impl Driver {
@@ -33,6 +39,11 @@ impl Driver {
                     );
                 }
             }
+        }
+
+        if let Some(x) = KeyboardDriver::load() {
+            let mut lock = DRIVERS.lock();
+            lock.push(Driver::KeyboardDriver(x));
         }
     }
 }
@@ -53,8 +64,17 @@ impl NetworkDriver {
             let mut driver = rtl8139::RTL8139::new(device);
             driver.init();
 
-            return Some(NetworkDriver::RTL8139(driver));
+            return Some(Self::RTL8139(driver));
         }
         None
+    }
+}
+
+impl KeyboardDriver {
+    fn load() -> Option<Self> {
+        let device = keyboard::Keyboard::new();
+        device.init();
+
+        Some(Self::Simple(device))
     }
 }

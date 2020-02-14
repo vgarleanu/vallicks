@@ -15,8 +15,6 @@ pub mod exit {
 
 pub use crate::hlt_loop as halt;
 
-pub use crate::arch::interrupts::pop_buffer as input;
-
 pub mod timer {
     pub use crate::arch::pit::get_milis;
 }
