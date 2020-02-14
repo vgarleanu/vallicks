@@ -3,6 +3,7 @@ use crate::schedule::thread::{Thread, ThreadId};
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;
 use x86_64::VirtAddr;
+
 pub struct Scheduler {
     threads: BTreeMap<ThreadId, Thread>,
     current_thread_id: ThreadId,

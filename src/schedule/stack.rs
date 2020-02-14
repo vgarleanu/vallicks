@@ -1,5 +1,5 @@
+use crate::prelude::*;
 use crate::schedule::switch::call_closure_entry;
-use alloc::boxed::Box;
 use core::mem;
 use core::raw::TraitObject;
 use x86_64::VirtAddr;
