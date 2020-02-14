@@ -283,6 +283,7 @@ impl RTL8139 {
 impl RTL8139Inner {
     /// Function called on a ROK interrupt from the RTL8139 NIC, it parses the data written into
     /// the buffer as a ethernet frame and pushes it into our Vec.
+    /// NOTE: To the paranoid me, THIS CODE WORKS DW DONT TOUCH IT.
     fn rok(&mut self) {
         // A packet frame looks something like this
         // +--------------------------------------------+
