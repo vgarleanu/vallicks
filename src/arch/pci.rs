@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use alloc::vec::Vec;
 use x86_64::instructions::port::Port;
 
 pub struct Pci {
@@ -160,7 +159,7 @@ impl Device {
 
     pub fn set_enable_int(&mut self) {
         let original_conf = self.read32(0x04);
-        let next_conf = original_conf | (1 << 10);
+        let next_conf = original_conf & !(1 << 10);
 
         unsafe {
             self.command_port.write(self.get_id(0x04));
@@ -170,7 +169,7 @@ impl Device {
 
     pub fn set_disable_int(&mut self) {
         let original_conf = self.read32(0x04);
-        let next_conf = original_conf & !(1 << 10);
+        let next_conf = original_conf | (1 << 10);
 
         unsafe {
             self.command_port.write(self.get_id(0x04));

@@ -6,12 +6,11 @@
 
 use crate::{
     arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device},
-    net::ip::Ether2Frame,
+    net::ip::{Ether2Frame, Mac},
+    prelude::sync::{Arc, RwLock},
     prelude::*,
 };
-use alloc::{sync::Arc, vec::Vec};
 use core::convert::TryInto;
-use spin::RwLock;
 use x86_64::instructions::port::Port;
 use x86_64::VirtAddr;
 
@@ -62,6 +61,9 @@ struct RTL8139Inner {
     pub cpcr: Port<u16>,
     pub capr: Port<u16>,
 
+    // Registers holding our MAC bytes
+    pub idr: [Port<u8>; 6],
+
     pub tx_dat: [Port<u32>; 4],
     pub tx_cmd: [Port<u32>; 4],
     pub tx_cursor: usize,
@@ -69,11 +71,12 @@ struct RTL8139Inner {
     pub buffer: [u8; RX_BUF_LEN_WRAPPED],
     pub rx_cursor: usize,
 
-    frames: Vec<Ether2Frame>,
+    pub frames: Vec<Ether2Frame>,
 }
 
 pub struct RTL8139 {
     inner: Arc<RwLock<RTL8139Inner>>,
+    mac: Mac,
 }
 
 impl RTL8139 {
@@ -90,6 +93,15 @@ impl RTL8139 {
             ack: Port::new(base + 0x3e),
             cpcr: Port::new(base + 0xe0),
             capr: Port::new(base + 0x38),
+
+            idr: [
+                Port::new(base + 0x00),
+                Port::new(base + 0x01),
+                Port::new(base + 0x02),
+                Port::new(base + 0x03),
+                Port::new(base + 0x04),
+                Port::new(base + 0x05),
+            ],
 
             tx_dat: [
                 Port::new(base + 0x20),
@@ -113,6 +125,7 @@ impl RTL8139 {
 
         Self {
             inner: Arc::new(RwLock::new(inner)),
+            mac: Mac::from_bytes(&[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]),
         }
     }
 
@@ -133,8 +146,20 @@ impl RTL8139 {
             }
         }
 
+        let raw_mac = inner
+            .idr
+            .iter_mut()
+            .map(|x| unsafe { x.read() })
+            .collect::<Vec<u8>>();
+        self.mac = Mac::from_bytes(raw_mac.as_ref());
+        println!("rtl8139: Got MAC {}", self.mac);
+
         let rx_ptr = VirtAddr::from_ptr(inner.buffer.as_ptr());
-        let rx_physical = unsafe { translate_addr(rx_ptr).expect("rtl8139: Failed to translate RxPtr from VirtAddr to PhysAddr") }.as_u64();
+        let rx_physical = unsafe {
+            translate_addr(rx_ptr)
+                .expect("rtl8139: Failed to translate RxPtr from VirtAddr to PhysAddr")
+        }
+        .as_u64();
 
         println!(
             "rtl8139: Setting Rx buffer to VirtAddr: {:?} PhysAddr: {:#x?}",
@@ -179,13 +204,21 @@ impl RTL8139 {
         }
     }
 
+    pub fn mac(&self) -> Mac {
+        self.mac.clone()
+    }
+
     pub fn write(&mut self, data: &[u8]) {
-        let mut inner = self.inner.write();
+        // NOTE: Are we sure we absolutely need to disable interrupts? maybe we can bypass this
+        //       with DMA.
+        // We clone the inner PCI device to avoid a deadlock when we re-enable PCI interrupts for
+        // this device
+        let mut device = { self.inner.read().device.clone() };
 
         // Disable interrupts for this PCI device to avoid deadlock to do with inner
-        inner.device.set_disable_int();
-
+        device.set_disable_int();
         {
+            let mut inner = self.inner.write();
             let cursor = inner.tx_cursor;
             let ptr = VirtAddr::from_ptr(data.as_ptr());
             let physical = unsafe { translate_addr(ptr).unwrap() }.as_u64() as u32;
@@ -202,8 +235,15 @@ impl RTL8139 {
             }
             inner.tx_cursor = (cursor + 1) % 4;
         }
+        device.set_enable_int();
+    }
 
-        inner.device.set_enable_int();
+    pub fn try_read(&mut self) -> Option<Ether2Frame> {
+        if self.inner.read().frames.len() < 1 {
+            return None;
+        }
+
+        self.inner.write().frames.pop()
     }
 
     fn handle_int(inner: Arc<RwLock<RTL8139Inner>>) {
@@ -260,7 +300,10 @@ impl RTL8139Inner {
 
         // NOTE: The length in the header will never be less than 64, if a packet is received that
         //       has a length less than 64, the NIC will simply pad the packet with 0x00.
-        assert!(length >= 64, "rtl8139: ROK Len is less than 64. THIS IS A BUG.");
+        assert!(
+            length >= 64,
+            "rtl8139: ROK Len is less than 64. THIS IS A BUG."
+        );
 
         // NOTE: We are currently not zeroing out memory after a packet has been parsed and pushed.
         //       Are we sure that if packets with length less than 64 bytes will not contain

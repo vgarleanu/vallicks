@@ -1,9 +1,7 @@
-use crate::{arch::gdt, arch::pit::tick, prelude::*, schedule::schedule};
-use alloc::boxed::Box;
+use crate::{arch::gdt, arch::pit::tick, schedule::schedule, prelude::{*, sync::{Mutex, RwLock}}};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
-use spin::{Mutex, RwLock};
 use x86_64::{
     registers::control::Cr2,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},

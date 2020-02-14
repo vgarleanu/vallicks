@@ -1,8 +1,5 @@
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-use crate::prelude::*;
+use crate::prelude::{*, sync::Mutex};
 use core::sync::atomic::{AtomicU64, Ordering};
-use spin::Mutex;
 use x86_64::instructions::port::Port;
 
 const PIT_CH0: u16 = 0x40; // Channel 0 data port (read/write) (PIC TIMER)

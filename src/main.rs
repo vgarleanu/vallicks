@@ -5,5 +5,7 @@ use vallicks::prelude::*;
 
 #[entrypoint]
 fn main() {
-    println!("Hello world!");
+    thread::spawn(vallicks::net::stack::net_thread);
+
+    halt();
 }

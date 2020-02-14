@@ -1,8 +1,7 @@
 use crate::{arch::interrupts::register_interrupt, prelude::*};
-use alloc::sync::Arc;
+use crate::prelude::sync::{RwLock, Arc};
 use arraydeque::{ArrayDeque, Wrapping};
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard as KeyboardBackend, ScancodeSet1};
-use spin::RwLock;
 use x86_64::instructions::port::Port;
 
 pub struct Keyboard {

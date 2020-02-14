@@ -83,7 +83,7 @@ pub fn alloc_stack(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) -> Result<StackBounds, mapper::MapToError> {
-    static STACK_ALLOC_NEXT: AtomicU64 = AtomicU64::new(0x_5555_5555_0000);
+    static STACK_ALLOC_NEXT: AtomicU64 = AtomicU64::new(0x5555_5555_0000);
 
     let guard_page_start = STACK_ALLOC_NEXT.fetch_add(
         (size_in_pages + 1) * Page::<Size4KiB>::SIZE,
@@ -95,6 +95,7 @@ pub fn alloc_stack(
     let stack_start = guard_page + 1;
     let stack_end = stack_start + size_in_pages;
     let flags = Flags::PRESENT | Flags::WRITABLE;
+
     for page in Page::range(stack_start, stack_end) {
         let frame = frame_allocator
             .allocate_frame()

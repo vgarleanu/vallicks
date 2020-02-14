@@ -1,8 +1,6 @@
 use crate::arch::pci::Device;
-use crate::prelude::*;
-use alloc::vec::Vec;
+use crate::prelude::{sync::Mutex, *};
 use lazy_static::lazy_static;
-use spin::Mutex;
 
 pub mod keyboard;
 pub mod rtl8139;

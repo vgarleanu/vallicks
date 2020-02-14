@@ -16,86 +16,11 @@ pub fn cpu_info() {
     if features.has_sse3() {
         print!(" sse3");
     }
-    if features.has_pclmulqdq() {
-        print!(" pclmulqdq");
-    }
-    if features.has_cpl() {
-        print!(" cpl");
-    }
-    if features.has_vmx() {
-        print!(" vmx");
-    }
-    if features.has_smx() {
-        print!(" smx");
-    }
-    if features.has_eist() {
-        print!(" eist");
-    }
-    if features.has_tm2() {
-        print!(" tm2");
-    }
-    if features.has_ssse3() {
-        print!(" ssse3");
-    }
-    if features.has_cnxtid() {
-        print!(" cnxtid");
-    }
-    if features.has_fma() {
-        print!(" fma");
-    }
     if features.has_cmpxchg16b() {
         print!(" cmdpxchg16b");
     }
-    if features.has_pdcm() {
-        print!(" pdcm");
-    }
-    if features.has_pcid() {
-        print!(" pcid");
-    }
-    if features.has_dca() {
-        print!(" dca");
-    }
-    if features.has_sse41() {
-        print!(" sse41");
-    }
-    if features.has_sse42() {
-        print!(" sse42");
-    }
-    if features.has_x2apic() {
-        print!(" x2apic");
-    }
-    if features.has_movbe() {
-        print!(" movbe");
-    }
-    if features.has_popcnt() {
-        print!(" popcnt");
-    }
-    if features.has_tsc_deadline() {
-        print!(" tsc_deadline");
-    }
-    if features.has_aesni() {
-        print!(" aesni");
-    }
-    if features.has_xsave() {
-        print!(" xsave");
-    }
-    if features.has_oxsave() {
-        print!(" oxsave");
-    }
-    if features.has_avx() {
-        print!(" avx");
-    }
-    if features.has_f16c() {
-        print!(" f16c");
-    }
-    if features.has_rdrand() {
-        print!(" rdrand");
-    }
     if features.has_fpu() {
         print!(" fpu");
-    }
-    if features.has_vme() {
-        print!(" vme");
     }
     if features.has_de() {
         print!(" de");
@@ -116,10 +41,10 @@ pub fn cpu_info() {
         print!(" cmdpxchg8b");
     }
     if features.has_apic() {
-        print!(" APIC");
+        print!(" apic");
     }
     if features.has_sysenter_sysexit() {
-        print!(" SYSENTER/SYSEXIT");
+        print!(" sysenter sysexit");
     }
     if features.has_acpi() {
         print!(" acpi");
