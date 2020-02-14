@@ -19,4 +19,11 @@ pub mod timer {
     pub use crate::arch::pit::get_milis;
 }
 
+pub mod sync {
+    pub use alloc::sync::Arc;
+    pub use spin::{Mutex, RwLock};
+}
+
 pub use vallicks_macros::main as entrypoint;
+
+pub use alloc::vec;
