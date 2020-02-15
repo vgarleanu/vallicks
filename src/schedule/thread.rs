@@ -4,7 +4,6 @@ use crate::{
     prelude::*,
     schedule::stack::Stack,
 };
-use alloc::boxed::Box;
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{
     structures::paging::{mapper, FrameAllocator, Mapper, Size4KiB},
@@ -52,7 +51,7 @@ impl Thread {
         let stack_bounds = alloc_stack(stack_size, mapper, frame_allocator)?;
         let mut stack = unsafe { Stack::new(stack_bounds.end()) };
         println!(
-            "New thread stack @ {:#x}..{:#x}",
+            "scheduler: new thread stack @ {:#x}..{:#x}",
             stack_bounds.start().as_u64(),
             stack_bounds.end().as_u64()
         );

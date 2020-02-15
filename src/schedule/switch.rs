@@ -40,7 +40,7 @@ pub extern "C" fn add_paused_thread(paused_stack_pointer: VirtAddr, new_thread_i
     let mut lock = SCHEDULER.lock();
     let _ = lock
         .as_mut()
-        .expect("Scheduler not init...")
+        .expect("scheduler: scheduler not init...")
         .add_paused_thread(paused_stack_pointer, new_thread_id);
 }
 

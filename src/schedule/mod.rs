@@ -1,14 +1,13 @@
-use crate::prelude::*;
-use crate::arch::memory::BootInfoFrameAllocator;
-use crate::schedule::scheduler::Scheduler;
-use spin::Mutex;
-use x86_64::structures::paging::mapper::OffsetPageTable;
-
 pub mod scheduler;
 pub mod stack;
 pub mod switch;
 pub mod thread;
 
+use crate::{
+    arch::memory::BootInfoFrameAllocator, prelude::sync::Mutex, prelude::*,
+    schedule::scheduler::Scheduler,
+};
+use x86_64::structures::paging::mapper::OffsetPageTable;
 use switch::context_switch_to;
 use thread::{Thread, ThreadId};
 
@@ -18,10 +17,7 @@ pub(super) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
 pub(crate) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
 pub(crate) static ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
-pub fn init_scheduler(
-    mapper: OffsetPageTable<'static>,
-    frame_allocator: BootInfoFrameAllocator,
-) {
+pub fn init_scheduler(mapper: OffsetPageTable<'static>, frame_allocator: BootInfoFrameAllocator) {
     let mut lock = SCHEDULER.lock();
     *lock = Some(Scheduler::new());
 
@@ -53,7 +49,7 @@ where
 {
     let mut slock = SCHEDULER.lock();
     if slock.is_none() {
-        panic!("");
+        panic!("schedule::spawn: SCHEDULER is none, BUG");
     }
 
     let mut mlock = MAPPER.lock();
@@ -84,14 +80,15 @@ where
         mapper.unwrap(),
         alloc.unwrap(),
     )
-    .unwrap();
+    .expect("scheduler: failed to spawn a thread");
+
     slock.as_mut().unwrap().add_new_thread(thread);
 }
 
 pub fn current() -> ThreadId {
     let mut slock = SCHEDULER.lock();
     if slock.is_none() {
-        panic!("");
+        panic!("schedule::current: SCHEDULER is none, BUG");
     }
 
     slock.as_mut().unwrap().current_thread_id()
@@ -111,6 +108,11 @@ pub fn sleep(milis: u64) {
                 let _ = context_switch_to(next_id, next_stack_pointer);
             };
             break;
+        }
+
+        // We halt for a cycle to not eat up the cpu
+        unsafe {
+            asm!("hlt" :::: "volatile");
         }
     }
 }
