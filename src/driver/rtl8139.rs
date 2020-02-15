@@ -199,7 +199,7 @@ impl RTL8139 {
             // Mask only RxOk, TxOk, and some Err registers for internal book-keeping
             inner
                 .imr
-                .write(RX_OK | TX_OK | RX_ERR | TX_ERR | SYS_ERR | RDU | TDU);
+                .write(0xffff | RX_OK | TX_OK | RX_ERR | TX_ERR | SYS_ERR | RDU | TDU);
         }
     }
 
@@ -250,7 +250,9 @@ impl RTL8139 {
         let isr = unsafe { inner.ack.read() };
 
         if (isr & RX_OK) != 0 {
-            inner.rok();
+            while (unsafe { inner.cmd_reg.read() } & RX_BUF_EMPTY) == 0 {
+                inner.rok();
+            }
         }
 
         if (isr & TX_OK) != 0 {
@@ -282,7 +284,6 @@ impl RTL8139 {
 impl RTL8139Inner {
     /// Function called on a ROK interrupt from the RTL8139 NIC, it parses the data written into
     /// the buffer as a ethernet frame and pushes it into our Vec.
-    /// NOTE: To the paranoid me, THIS CODE WORKS DW DONT TOUCH IT.
     fn rok(&mut self) {
         // A packet frame looks something like this
         // +--------------------------------------------+
@@ -308,7 +309,7 @@ impl RTL8139Inner {
         // NOTE: We are currently not zeroing out memory after a packet has been parsed and pushed.
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
-        let frame = Ether2Frame::from_bytes(&self.buffer[4..length - 4]);
+        let frame = Ether2Frame::from_bytes(&buffer[4..length - 4]);
         self.frames.push(frame);
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
