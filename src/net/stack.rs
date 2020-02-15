@@ -106,12 +106,17 @@ pub fn net_thread() {
     .expect("Unable to locate net driver");
 
     loop {
-        if let Some(frame) = driver.try_read() {
+        if let Some(ref frame) = driver.try_read() {
+            println!("{:x}", frame.dtype());
             if frame.dtype() == 0x0806 {
                 println!("{:?}", frame);
                 let reply = handle_arp(frame, driver, ip);
 
                 driver.write(reply.to_bytes().as_ref());
+            }
+
+            if frame.dtype() == 0x0800 {
+                handle_icmp(frame, driver, ip);
             }
         }
 
@@ -119,7 +124,7 @@ pub fn net_thread() {
     }
 }
 
-pub fn handle_arp(frame: Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) -> Ether2Frame {
+pub fn handle_arp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) -> Ether2Frame {
     let arp_frame = ArpPacket::from_bytes(frame.frame().as_ref());
 
     let mut reply = arp_frame.clone(); // We dont have to do much except swap shit around
@@ -131,4 +136,8 @@ pub fn handle_arp(frame: Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) -
     reply.opcode = 0x02; // ARP_REPLY TODO: Make this a global const
 
     Ether2Frame::new(arp_frame.smac, driver.mac(), 0x0806, reply.to_bytes())
+}
+
+pub fn handle_icmp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) {
+    println!("ICMP");
 }
