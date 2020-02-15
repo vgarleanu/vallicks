@@ -95,8 +95,8 @@ pub fn init(boot_info: &'static BootInfo) {
 pub fn exit(exit_code: ExitCode) {
     use x86_64::instructions::port::Port;
 
+    let mut port = Port::new(0xf4);
     unsafe {
-        let mut port = Port::new(0xf4);
         port.write(exit_code as u32);
     }
 }

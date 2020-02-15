@@ -109,7 +109,6 @@ pub fn net_thread() {
         if let Some(ref frame) = driver.try_read() {
             println!("{:x}", frame.dtype());
             if frame.dtype() == 0x0806 {
-                println!("{:?}", frame);
                 let reply = handle_arp(frame, driver, ip);
 
                 driver.write(reply.to_bytes().as_ref());

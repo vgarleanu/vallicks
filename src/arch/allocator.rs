@@ -6,7 +6,7 @@ use x86_64::{
 };
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
-pub const HEAP_SIZE: usize = 512 * 1024;
+pub const HEAP_SIZE: usize = 1024 * 1024;
 static mut HEAP_LAST: usize = 0x4444_4444_0000 + HEAP_SIZE;
 
 pub fn init_heap(
