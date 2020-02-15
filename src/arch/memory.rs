@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{
@@ -18,6 +19,7 @@ pub struct BootInfoFrameAllocator {
 
 impl BootInfoFrameAllocator {
     pub unsafe fn init(mem_map: &'static MemoryMap) -> Self {
+        println!("{:?}", mem_map);
         Self { mem_map, next: 0 }
     }
 
@@ -39,19 +41,12 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     }
 }
 
-/// Initialize a new OffsetPageTable
 pub unsafe fn init(physical_mem_offset: VirtAddr) -> OffsetPageTable<'static> {
     let level_4_table = active_l4_table(physical_mem_offset);
     MEM_OFFSET = Some(physical_mem_offset);
     OffsetPageTable::new(level_4_table, physical_mem_offset)
 }
 
-/// Returns mut reference to a active l4 table
-///
-/// This function is unsafe because the calee must ensure the
-/// physical memory is mapped to the virtual memory at the passed
-/// `physical_mem_offset`. This function must also be only called
-/// once to avoid aliasing `&mut` references.
 unsafe fn active_l4_table(physical_mem_offset: VirtAddr) -> &'static mut PageTable {
     let (l4_table_frame, _) = Cr3::read();
 
@@ -109,7 +104,6 @@ pub fn alloc_stack(
 }
 
 pub unsafe fn translate_addr(addr: VirtAddr) -> Option<PhysAddr> {
-    // read the active level 4 frame from the CR3 register
     let (level_4_table_frame, _) = Cr3::read();
     let mem_offset = MEM_OFFSET.expect("MEM_OFFSET not init");
 
@@ -126,7 +120,7 @@ pub unsafe fn translate_addr(addr: VirtAddr) -> Option<PhysAddr> {
         // convert the frame into a page table reference
         let virt = mem_offset + frame.start_address().as_u64();
         let table_ptr: *const PageTable = virt.as_ptr();
-        let table =  &*table_ptr ;
+        let table = &*table_ptr;
 
         // read the page table entry and update `frame`
         let entry = &table[index];

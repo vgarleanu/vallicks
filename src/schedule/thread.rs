@@ -1,5 +1,8 @@
-use crate::arch::memory::{alloc_stack, StackBounds};
-use crate::schedule::stack::Stack;
+use crate::{
+    arch::memory::{alloc_stack, StackBounds},
+    prelude::*,
+    schedule::stack::Stack,
+};
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{
@@ -47,6 +50,7 @@ impl Thread {
     {
         let stack_bounds = alloc_stack(stack_size, mapper, frame_allocator)?;
         let mut stack = unsafe { Stack::new(stack_bounds.end()) };
+        println!("{:?}", stack_bounds);
 
         stack.set_up_for_closure(Box::new(closure));
 

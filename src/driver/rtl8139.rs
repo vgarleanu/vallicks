@@ -3,7 +3,6 @@
 //! * http://www.jbox.dk/sanos/source/sys/dev/rtl8139.c.html
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139_ProgrammersGuide.pdf
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139D_DataSheet.pdf
-
 use crate::{
     arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device},
     net::ip::{Ether2Frame, Mac},

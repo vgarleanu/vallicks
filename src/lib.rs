@@ -65,24 +65,26 @@ pub fn init(boot_info: &'static BootInfo) {
     /* We first create the allocator, because the itnerrupt handlers use some allocations
      * internally
      */
+    arch::interrupts::init_idt();
     unsafe { arch::interrupts::PICS.lock().initialize() };
     println!("pic: PIC init done...");
-    arch::interrupts::init_idt();
+
+    x86_64::instructions::interrupts::enable();
+    println!("int: interrupts enabled");
 
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { __meminit(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
-    arch::allocator::init_heap(&mut mapper, &mut frame_allocator)
-        .expect("Failed to initialize heap");
-    println!("alloc: Allocator init done...");
+    arch::allocator::init_heap(&mut mapper, &mut frame_allocator).map_or_else(
+        |_| panic!("alloc: Failed to initialize heap..."),
+        |_| println!("alloc: Allocator init done..."),
+    );
 
     init_scheduler(mapper, frame_allocator);
 
     // FIXME: For some reason initiating the PIT before paging crashes the allocator
     arch::pit::init();
-    x86_64::instructions::interrupts::enable();
-    println!("int: Ok");
 
     let mut pci = pci::Pci::new();
     pci.enumerate();

@@ -1,4 +1,13 @@
-use crate::{arch::gdt, arch::pit::tick, schedule::schedule, prelude::{*, sync::{Mutex, RwLock}}};
+use crate::{
+    arch::gdt,
+    arch::memory::translate_addr,
+    arch::pit::tick,
+    prelude::{
+        sync::{Mutex, RwLock},
+        *,
+    },
+    schedule::schedule,
+};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
@@ -81,10 +90,14 @@ extern "x86-interrupt" fn page_fault_handler(
     stack_frame: &mut InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
+    let addr = Cr2::read();
     println!("Exception: PAGE FAULT");
-    println!("Accessed Addr: {:?}", Cr2::read());
+    println!("Accessed Addr: {:?} Phys: {:?}", addr, unsafe {
+        translate_addr(addr)
+    });
     println!("Err code: {:?}", error_code);
     println!("{:#?}", stack_frame);
+    println!("{:?}", unsafe { translate_addr(stack_frame.stack_pointer) });
     halt();
 }
 
