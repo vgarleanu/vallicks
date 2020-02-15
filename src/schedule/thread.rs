@@ -1,5 +1,6 @@
 use crate::{
     arch::memory::{alloc_stack, StackBounds},
+    arch::pit::get_milis,
     prelude::*,
     schedule::stack::Stack,
 };
@@ -12,6 +13,14 @@ use x86_64::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ThreadId(u64);
+
+#[derive(Debug)]
+pub struct Thread {
+    id: ThreadId,
+    parked: Option<(u64, u64)>,
+    stack_pointer: Option<VirtAddr>,
+    stack_bounds: Option<StackBounds>,
+}
 
 impl ThreadId {
     fn new() -> Self {
@@ -30,14 +39,6 @@ impl From<ThreadId> for u64 {
     }
 }
 
-#[derive(Debug)]
-pub struct Thread {
-    id: ThreadId,
-    pub parked: Option<(u64, u64)>,
-    stack_pointer: Option<VirtAddr>,
-    stack_bounds: Option<StackBounds>,
-}
-
 impl Thread {
     pub fn new<F>(
         closure: F,
@@ -50,7 +51,11 @@ impl Thread {
     {
         let stack_bounds = alloc_stack(stack_size, mapper, frame_allocator)?;
         let mut stack = unsafe { Stack::new(stack_bounds.end()) };
-        println!("{:?}", stack_bounds);
+        println!(
+            "New thread stack @ {:#x}..{:#x}",
+            stack_bounds.start().as_u64(),
+            stack_bounds.end().as_u64()
+        );
 
         stack.set_up_for_closure(Box::new(closure));
 
@@ -77,5 +82,19 @@ impl Thread {
 
     pub fn stack_pointer(&mut self) -> &mut Option<VirtAddr> {
         &mut self.stack_pointer
+    }
+
+    pub fn is_ready(&mut self) -> bool {
+        if let Some((parked_at, for_milis)) = self.parked {
+            if get_milis() < parked_at + for_milis {
+                return false;
+            }
+            self.parked = None;
+        }
+        true
+    }
+
+    pub fn park(&mut self, milis: u64) {
+        self.parked = Some((get_milis(), milis));
     }
 }

@@ -1,5 +1,7 @@
-use crate::arch::pit::get_milis;
-use crate::schedule::thread::{Thread, ThreadId};
+use crate::{
+    prelude::*,
+    schedule::thread::{Thread, ThreadId},
+};
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;
 use x86_64::VirtAddr;
@@ -18,7 +20,7 @@ impl Scheduler {
 
         threads
             .insert(root_id, root_thread)
-            .expect_none("map is not empty after creation");
+            .expect_none("scheduler: map is not empty after creation");
 
         Scheduler {
             threads,
@@ -27,33 +29,33 @@ impl Scheduler {
         }
     }
 
-    fn next_thread(&mut self) -> Option<ThreadId> {
-        self.paused_threads.pop_front()
+    fn next_thread(&mut self) -> Option<(ThreadId, &mut Thread)> {
+        if let Some(tid) = self.paused_threads.pop_front() {
+            if let Some(thread) = self.threads.get_mut(&tid) {
+                return Some((tid, thread));
+            }
+
+            println!("scheduler: attempted to switch to a thread that doesnt exist");
+        }
+        None
     }
 
     pub fn schedule(&mut self) -> Option<(ThreadId, VirtAddr)> {
-        if let Some(next_id) = self.next_thread() {
-            let next_thread = self
-                .threads
-                .get_mut(&next_id)
-                .expect("next thread does not exist");
-
-            if let Some((parked_at, for_milis)) = next_thread.parked {
-                if get_milis() < parked_at + for_milis {
-                    self.paused_threads.push_back(next_id);
-                    return None;
-                }
-                next_thread.parked = None;
+        if let Some((tid, thread)) = self.next_thread() {
+            if !thread.is_ready() {
+                self.paused_threads.push_back(tid);
+                return None;
             }
-            let next_stack_pointer = next_thread
-                .stack_pointer()
-                .take()
-                .expect("paused thread has no stack pointer");
 
-            Some((next_id, next_stack_pointer))
-        } else {
-            None
+            if let Some(sp) = thread.stack_pointer().take() {
+                return Some((tid, sp));
+            }
+
+            println!("scheduler: thread has no stack pointer, gonna clean");
+            self.remove_thread(tid);
         }
+
+        None
     }
 
     pub(super) fn add_paused_thread(
@@ -67,7 +69,7 @@ impl Scheduler {
         paused_thread
             .stack_pointer()
             .replace(paused_stack_pointer)
-            .expect_none("running thread should have stack pointer set to None");
+            .expect_none("scheduler: running thread should have stack pointer set to None");
         self.paused_threads.push_back(paused_thread_id);
         Ok(())
     }
@@ -76,7 +78,7 @@ impl Scheduler {
         let thread_id = thread.id();
         self.threads
             .insert(thread_id, thread)
-            .expect_none("thread already exists");
+            .expect_none("scheduler: attempted to add a thread with a conflicting id");
         self.paused_threads.push_back(thread_id);
     }
 
@@ -85,13 +87,24 @@ impl Scheduler {
     }
 
     pub(super) fn remove_thread(&mut self, id: ThreadId) {
-        let _thread = self.threads.remove(&id);
+        if self.threads.remove(&id).is_none() {
+            println!("scheduler: warn attempted to remove thread that doesnt exist in the pool");
+        }
+
         self.paused_threads.retain(|&x| x != id);
     }
 
     pub(super) fn park_current(&mut self, milis: u64) {
-        let current_milis = get_milis();
-        let mut thread = self.threads.get_mut(&self.current_thread_id).unwrap();
-        thread.parked = Some((current_milis, milis));
+        if let Some(thread) = self.threads.get_mut(&self.current_thread_id) {
+            thread.park(milis);
+            return;
+        }
+
+        println!(
+            "scheduler: Attempted to park a thread that doesnt exist with TID: {}",
+            self.current_thread_id.as_u64()
+        );
+
+        self.remove_thread(self.current_thread_id);
     }
 }
