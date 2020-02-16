@@ -1,4 +1,4 @@
-use crate::prelude::{sync::Mutex, *};
+use crate::prelude::{ *};
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::instructions::port::Port;
 
@@ -13,11 +13,9 @@ lazy_static::lazy_static! {
 }
 
 pub fn init() {
-    // Channel 0, lobyte/hibyte, Rate generator, Binary mode
     let mut p_pit1_ch0 = Port::new(PIT_CH0);
     let mut p_pit1_reg = Port::new(PIT_REG);
     unsafe {
-        //p_pit1_reg.write(0b00_11_000_0 as u32); // command
         p_pit1_reg.write(0x36u8);
         p_pit1_ch0.write((RELOAD_VALUE & 0x00FF) as u8); // low
         p_pit1_ch0.write(((RELOAD_VALUE & 0xFF00) >> 8) as u8); // high
