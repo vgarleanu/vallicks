@@ -21,6 +21,22 @@ pub struct Ipv4 {
     checksum: u16,
     sip: Ipv4Addr,
     dip: Ipv4Addr,
+
+    data: Vec<u8>,
+}
+
+impl Ipv4 {
+    pub fn len(&self) -> u16 {
+        self.len
+    }
+
+    pub fn proto(&self) -> u8 {
+        self.proto
+    }
+
+    pub fn data(&self) -> Vec<u8> {
+        self.data.clone()
+    }
 }
 
 impl TryFrom<&[u8]> for Ipv4 {
@@ -51,6 +67,8 @@ impl TryFrom<&[u8]> for Ipv4 {
 
             sip: data[12..16].try_into()?,
             dip: data[16..20].try_into()?,
+
+            data: data[20..].to_vec(),
         })
     }
 }
@@ -68,7 +86,6 @@ impl Into<Vec<u8>> for Ipv4 {
         let hdr: &[u8] = &[];
 
         let ver_dscp = &[
-            // version and hdr_len bytes
             (self.version << 4) | (self.hdr_len / 4),
             (self.dscp << 2) | self.ecn,
         ];

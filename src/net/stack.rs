@@ -1,10 +1,12 @@
 use crate::driver::*;
 use crate::net::frames::arp::ArpPacket;
 use crate::net::frames::eth2::Ether2Frame;
+use crate::net::frames::icmp::Icmp;
 use crate::net::frames::ipaddr::Ipv4Addr;
 use crate::net::frames::ipv4::Ipv4;
 use crate::net::frames::mac::Mac;
 use crate::prelude::*;
+use core::array::TryFromSliceError;
 use core::convert::TryInto;
 
 pub fn net_thread() {
@@ -27,7 +29,6 @@ pub fn net_thread() {
 
     loop {
         if let Some(ref frame) = driver.try_read() {
-            println!("{:x}", frame.dtype());
             if frame.dtype() == 0x0806 {
                 let reply = handle_arp(frame, driver, ip);
 
@@ -35,7 +36,13 @@ pub fn net_thread() {
             }
 
             if frame.dtype() == 0x0800 {
-                handle_icmp(frame, driver, ip);
+                let ipv4: Ipv4 = frame.frame().try_into().unwrap();
+
+                if ipv4.proto() == 0x01 {
+                    let icmp: Icmp = ipv4.data().try_into().unwrap();
+
+                    println!("{:#?}", icmp);
+                }
             }
         }
 
@@ -64,8 +71,5 @@ pub fn handle_arp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) 
 
 pub fn handle_icmp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) {
     let ipv4: Ipv4 = frame.frame().try_into().unwrap();
-    let data: Vec<u8> = ipv4.clone().into();
-    let new: Ipv4 = data.as_slice().try_into().unwrap();
     println!("{:#?}", ipv4);
-    println!("{:#?}", new);
 }
