@@ -22,8 +22,6 @@
 #![feature(const_fn)]
 #![no_std]
 
-extern crate cpuio;
-
 /// Command sent to begin PIC initialization.
 const CMD_INIT: u8 = 0x11;
 
@@ -63,12 +61,13 @@ impl Pic {
 /// A pair of chained PIC controllers.  This is the standard setup on x86.
 pub struct ChainedPics {
     pics: [Pic; 2],
+    mask: (u8, u8),
 }
 
 impl ChainedPics {
     /// Create a new interface for the standard PIC1 and PIC2 controllers,
-    /// specifying the desired interrupt offsets.
-    pub const unsafe fn new(offset1: u8, offset2: u8) -> ChainedPics {
+    /// specifying the desired interrupt offsets and the masks that we want to apply to the IMR.
+    pub const unsafe fn new(offset1: u8, offset2: u8, mask1: u8, mask2: u8) -> ChainedPics {
         ChainedPics {
             pics: [
                 Pic {
@@ -82,6 +81,7 @@ impl ChainedPics {
                     data: cpuio::UnsafePort::new(0xA1),
                 },
             ],
+            mask: (mask1, mask2),
         }
     }
 
@@ -131,8 +131,8 @@ impl ChainedPics {
         wait();
 
         // Restore our saved masks.
-        self.pics[0].data.write(saved_mask1);
-        self.pics[1].data.write(saved_mask2 & !(1 << 3));
+        self.pics[0].data.write(saved_mask1 & !self.mask.0);
+        self.pics[1].data.write(saved_mask2 & !self.mask.1);
     }
 
     /// Do we handle this interrupt?
