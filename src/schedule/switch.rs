@@ -29,7 +29,7 @@ pub unsafe fn context_switch_to(thread_id: ThreadId, stack_pointer: VirtAddr) {
         "call asm_context_switch"
         :
         : "{rdi}"(stack_pointer), "{rsi}"(thread_id)
-        : "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rpb", "r8", "r9", "r10",
+        : "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "r8", "r9", "r10",
         "r11", "r12", "r13", "r14", "r15", "rflags", "memory"
         : "intel", "volatile"
     );

@@ -7,9 +7,9 @@ use crate::{
     arch::memory::BootInfoFrameAllocator, prelude::sync::Mutex, prelude::*,
     schedule::scheduler::Scheduler,
 };
-use x86_64::structures::paging::mapper::OffsetPageTable;
 use switch::context_switch_to;
 use thread::{Thread, ThreadId};
+use x86_64::structures::paging::mapper::OffsetPageTable;
 
 pub(super) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
 

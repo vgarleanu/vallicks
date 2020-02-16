@@ -1,10 +1,7 @@
 use crate::driver::*;
-use crate::net::frames::arp::ArpPacket;
-use crate::net::frames::eth2::Ether2Frame;
-use crate::net::frames::icmp::Icmp;
-use crate::net::frames::ipaddr::Ipv4Addr;
-use crate::net::frames::ipv4::Ipv4;
-use crate::net::frames::mac::Mac;
+use crate::net::frames::{
+    arp::ArpPacket, eth2::Ether2Frame, icmp::Icmp, ipaddr::Ipv4Addr, ipv4::Ipv4, mac::Mac,
+};
 use crate::prelude::*;
 use core::array::TryFromSliceError;
 use core::convert::TryInto;
@@ -29,6 +26,7 @@ pub fn net_thread() {
 
     loop {
         if let Some(ref frame) = driver.try_read() {
+            println!("{}", frame.dtype());
             if frame.dtype() == 0x0806 {
                 let reply = handle_arp(frame, driver, ip);
 
@@ -48,10 +46,7 @@ pub fn net_thread() {
 
         // FIXME: For some reason a context switch fails to restore %rax, causing lock xadd
         //        %rcx,0x10(%rax) to cause a double fault
-        // thread::sleep(10); // sleep for 10 milis
-        unsafe {
-            asm!("hlt" :::: "volatile");
-        }
+        thread::sleep(1); // sleep for 10 milis
     }
 }
 
