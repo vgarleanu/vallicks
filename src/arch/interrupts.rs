@@ -36,7 +36,7 @@ pub static PICS: Mutex<ChainedPics> = Mutex::new(unsafe { ChainedPics::new(32, 4
 
 lazy_static! {
     static ref INT_TABLE: RwLock<HashMap<i32, Box<dyn Fn() + Send + Sync + 'static>>> =
-        RwLock::new(HashMap::with_capacity(16));
+        RwLock::new(HashMap::new());
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
