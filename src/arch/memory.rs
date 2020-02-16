@@ -1,4 +1,3 @@
-use crate::prelude::*;
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{

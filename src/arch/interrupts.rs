@@ -30,11 +30,9 @@ macro_rules! make_int_handler {
     };
 }
 
-pub const PIC_1_OFFSET: u8 = 32;
-pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-
-pub static PICS: Mutex<ChainedPics> =
-    Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
+// Create a PIC instance masking all the interrupts for both pics, meaning all interrupts will be
+// sent and setting the offsets from 32 to 32 + 8
+pub static PICS: Mutex<ChainedPics> = Mutex::new(unsafe { ChainedPics::new(32, 40, 0xff, 0xff) });
 
 lazy_static! {
     static ref INT_TABLE: RwLock<HashMap<i32, Box<dyn Fn() + Send + Sync + 'static>>> =
@@ -68,6 +66,10 @@ lazy_static! {
         idt
     };
 }
+pub fn init_idt() {
+    IDT.load();
+    println!("idt: Interrupt setup done...");
+}
 
 pub fn register_interrupt<T>(interrupt: i32, handler: T)
 where
@@ -75,11 +77,6 @@ where
 {
     let mut lock = INT_TABLE.write();
     lock.insert(interrupt, Box::new(handler));
-}
-
-pub fn init_idt() {
-    IDT.load();
-    println!("idt: Interrupt setup done...");
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
