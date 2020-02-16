@@ -19,7 +19,6 @@ pub struct BootInfoFrameAllocator {
 
 impl BootInfoFrameAllocator {
     pub unsafe fn init(mem_map: &'static MemoryMap) -> Self {
-        println!("{:?}", mem_map);
         Self { mem_map, next: 0 }
     }
 

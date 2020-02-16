@@ -37,9 +37,13 @@ use x86_64::VirtAddr;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeapWithRescue = LockedHeapWithRescue::new(|heap: &mut Heap| {
-    let (start, size) = crate::arch::allocator::extend_heap().expect("Failed to extend heap");
+    let (start, size) = crate::arch::allocator::extend_heap();
 
-    println!("Extra heap {:#x} with size {:#x}", start, size);
+    println!(
+        "allocator: assigning extra heap @ {:#x}...{:#x}",
+        start,
+        start + size
+    );
     unsafe {
         heap.add_to_heap(start, start + size);
     }
