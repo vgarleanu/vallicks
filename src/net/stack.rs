@@ -2,6 +2,7 @@ use crate::driver::*;
 use crate::net::frames::arp::ArpPacket;
 use crate::net::frames::eth2::Ether2Frame;
 use crate::net::frames::ipaddr::Ipv4Addr;
+use crate::net::frames::ipv4::Ipv4;
 use crate::net::frames::mac::Mac;
 use crate::prelude::*;
 use core::convert::TryInto;
@@ -38,7 +39,12 @@ pub fn net_thread() {
             }
         }
 
-        thread::sleep(10); // sleep for 10 milis
+        // FIXME: For some reason a context switch fails to restore %rax, causing lock xadd
+        //        %rcx,0x10(%rax) to cause a double fault
+        // thread::sleep(10); // sleep for 10 milis
+        unsafe {
+            asm!("hlt" :::: "volatile");
+        }
     }
 }
 
@@ -57,5 +63,9 @@ pub fn handle_arp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) 
 }
 
 pub fn handle_icmp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) {
-    println!("ICMP");
+    let ipv4: Ipv4 = frame.frame().try_into().unwrap();
+    let data: Vec<u8> = ipv4.clone().into();
+    let new: Ipv4 = data.as_slice().try_into().unwrap();
+    println!("{:#?}", ipv4);
+    println!("{:#?}", new);
 }

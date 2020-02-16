@@ -1,5 +1,5 @@
 use core::array::TryFromSliceError;
-use core::convert::{AsRef,  TryFrom, TryInto};
+use core::convert::{AsRef, From, TryFrom, TryInto};
 
 #[derive(Clone, Copy)]
 pub struct Ipv4Addr {
@@ -21,6 +21,12 @@ impl TryFrom<&[u8]> for Ipv4Addr {
         Ok(Self {
             inner: data.try_into()?,
         })
+    }
+}
+
+impl From<[u8; 4]> for Ipv4Addr {
+    fn from(data: [u8; 4]) -> Self {
+        Self { inner: data }
     }
 }
 
