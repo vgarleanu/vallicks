@@ -1,10 +1,12 @@
 use crate::prelude::*;
 use x86_64::instructions::port::Port;
 
+/// Struct holds a list of pci devices detected on the system
 pub struct Pci {
     pub devices: Vec<Device>,
 }
 
+/// Struct represents a single pci device
 #[derive(Debug, Clone)]
 pub struct Device {
     pub bus: u16,
@@ -39,14 +41,15 @@ pub enum DeviceType {
 
 impl Pci {
     pub fn new() -> Self {
+        // NOTE: running in debug mode makes this code panic and cause a pagefault
+        //       see: https://github.com/phil-opp/blog_os/issues/743
         Self {
-            devices: Vec::with_capacity(2048),
+            devices: Vec::new(),
         }
     }
 
     pub fn enumerate(&mut self) {
         println!("pci: Starting enumeration");
-        println!("Vec at: {:#x}", self.devices.as_ptr() as u32);
         for bus in 0..8 {
             for dev in 0..32 {
                 for fnt in 0..8 {
@@ -74,6 +77,8 @@ impl Pci {
 }
 
 impl Device {
+    /// Method takes a bus, device and function int and tries to get information about them, if
+    /// such a device exists it returns a new instance of Self, otherwise returns None.
     pub fn from(bus: u16, device: u16, function: u16) -> Option<Self> {
         let mut device = Self {
             bus,
