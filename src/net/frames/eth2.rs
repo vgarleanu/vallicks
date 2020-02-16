@@ -1,6 +1,7 @@
 use crate::net::frames::mac::Mac;
 use crate::prelude::*;
-use core::convert::{From, Into, TryInto};
+use core::array::TryFromSliceError;
+use core::convert::{Into, TryFrom, TryInto};
 
 #[derive(Eq, PartialEq, Clone)]
 pub struct Ether2Frame {
@@ -30,15 +31,16 @@ impl Ether2Frame {
     }
 }
 
-// TODO: Implement TryInto?
-impl From<&[u8]> for Ether2Frame {
-    fn from(data: &[u8]) -> Self {
-        Self {
+impl TryFrom<&[u8]> for Ether2Frame {
+    type Error = TryFromSliceError;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self {
             dst: data[..6].into(),
             src: data[6..12].into(),
-            dtype: u16::from_be_bytes(data[12..14].try_into().expect("Ether2Frame: Invalid dtype")),
+            dtype: u16::from_be_bytes(data[12..14].try_into()?),
             frame: data[14..].to_vec(),
-        }
+        })
     }
 }
 

@@ -309,8 +309,10 @@ impl RTL8139Inner {
         // NOTE: We are currently not zeroing out memory after a packet has been parsed and pushed.
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
-        let frame: Ether2Frame = buffer[4..length - 4].into();
-        self.frames.push(frame);
+        // If the frame is correctly parsed we push it into the queue, otherwise just skip it
+        let _ = buffer[4..length - 4]
+            .try_into()
+            .map(|x| self.frames.push(x));
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
         // always point to the start of the header.
