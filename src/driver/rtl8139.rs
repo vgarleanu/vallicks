@@ -5,7 +5,7 @@
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139D_DataSheet.pdf
 use crate::{
     arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device},
-    net::ip::{Ether2Frame, Mac},
+    net::frames::{eth2::Ether2Frame, mac::Mac},
     prelude::sync::{Arc, RwLock},
     prelude::*,
 };
@@ -124,7 +124,7 @@ impl RTL8139 {
 
         Self {
             inner: Arc::new(RwLock::new(inner)),
-            mac: Mac::from_bytes(&[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]),
+            mac: [0xff, 0xff, 0xff, 0xff, 0xff, 0xff].into(),
         }
     }
 
@@ -150,7 +150,7 @@ impl RTL8139 {
             .iter_mut()
             .map(|x| unsafe { x.read() })
             .collect::<Vec<u8>>();
-        self.mac = Mac::from_bytes(raw_mac.as_ref());
+        self.mac = raw_mac.as_slice().into();
         println!("rtl8139: Got MAC {}", self.mac);
 
         let rx_ptr = VirtAddr::from_ptr(inner.buffer.as_ptr());
@@ -309,7 +309,7 @@ impl RTL8139Inner {
         // NOTE: We are currently not zeroing out memory after a packet has been parsed and pushed.
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
-        let frame = Ether2Frame::from_bytes(&buffer[4..length - 4]);
+        let frame: Ether2Frame = buffer[4..length - 4].into();
         self.frames.push(frame);
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
