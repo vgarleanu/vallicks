@@ -1,4 +1,4 @@
-use crate::prelude::{ *};
+use crate::prelude::*;
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::instructions::port::Port;
 

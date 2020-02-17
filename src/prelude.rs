@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub use crate::{print, println, sprint, sprintln};
 
-pub use alloc::{boxed::Box, string::String, vec::Vec};
+pub use alloc::{boxed::Box, string::String, vec::Vec, format};
 
 #[allow(unused_imports)]
 pub use crate::schedule as thread;
@@ -24,6 +24,6 @@ pub mod sync {
     pub use spin::{Mutex, RwLock};
 }
 
-pub use vallicks_macros::main as entrypoint;
+pub use vallicks_macros::{compile_warning, main as entrypoint};
 
 pub use alloc::vec;

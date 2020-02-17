@@ -4,28 +4,17 @@ pub mod switch;
 pub mod thread;
 
 use crate::{
-    arch::memory::BootInfoFrameAllocator, prelude::sync::Mutex, prelude::*,
+    globals::{FRAME_ALLOCATOR, MAPPER, SCHEDULER},
+    prelude::*,
     schedule::scheduler::Scheduler,
 };
 use switch::context_switch_to;
 use thread::{Thread, ThreadId};
-use x86_64::structures::paging::mapper::OffsetPageTable;
 
-pub(super) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
-
-// TODO: Move these into lib.rs or arch/mod.rs
-pub(crate) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
-pub(crate) static ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
-
-pub fn init_scheduler(mapper: OffsetPageTable<'static>, frame_allocator: BootInfoFrameAllocator) {
+pub fn init_scheduler() {
     let mut lock = SCHEDULER.lock();
     *lock = Some(Scheduler::new());
 
-    let mut lock = MAPPER.lock();
-    *lock = Some(mapper);
-
-    let mut lock = ALLOCATOR.lock();
-    *lock = Some(frame_allocator);
     println!("scheduler: Scheduler setup done...");
 }
 
@@ -53,7 +42,7 @@ where
     }
 
     let mut mlock = MAPPER.lock();
-    let mut alock = ALLOCATOR.lock();
+    let mut alock = FRAME_ALLOCATOR.lock();
 
     let mapper = mlock.as_mut();
     let alloc = alock.as_mut();

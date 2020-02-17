@@ -16,6 +16,7 @@ extern crate alloc;
 
 pub mod arch;
 pub mod driver;
+pub(crate) mod globals;
 pub mod net;
 pub mod prelude;
 pub mod schedule;
@@ -23,32 +24,24 @@ pub mod schedule;
 #[allow(unused_imports)]
 use crate::{
     arch::{
-        memory::{init as __meminit, BootInfoFrameAllocator},
+        memory::{init as meminit, BootInfoFrameAllocator},
         pci,
         pit::get_milis,
     },
     driver::*,
+    prelude::*,
     schedule::init_scheduler,
 };
 use bootloader::BootInfo;
-use buddy_system_allocator::{Heap, LockedHeapWithRescue};
 use core::panic::PanicInfo;
 use prelude::*;
 use x86_64::VirtAddr;
 
-#[global_allocator]
-static ALLOCATOR: LockedHeapWithRescue = LockedHeapWithRescue::new(|heap: &mut Heap| {
-    let (start, size) = crate::arch::allocator::extend_heap();
+#[cfg(not(target_arch = "x86_64"))]
+compile_error!("This library can only be used on the x86_64 architecture.");
 
-    println!(
-        "allocator: assigning extra heap @ {:#x}...{:#x}",
-        start,
-        start + size
-    );
-    unsafe {
-        heap.add_to_heap(start, start + size);
-    }
-});
+#[cfg(debug_assertions)]
+compile_warning!("PIT will be disabled to default as using the PIT in debug builds causes UB");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -77,6 +70,8 @@ pub fn init(boot_info: &'static BootInfo) {
     // FIXME: Investigate as to why the PIT being set up in debug binary causes random page faults
     //        and general memory crashes. For now, if we are not running in release mode, the PIT
     //        will be enabled to the defaults.
+    //
+    // NOTE: Implement a APIC driver that hopfully eliminates the need for this workaround.
     if !cfg!(debug_assertions) {
         arch::pit::init();
     } else {
@@ -86,16 +81,26 @@ pub fn init(boot_info: &'static BootInfo) {
     x86_64::instructions::interrupts::enable();
     println!("int: interrupts enabled");
 
-    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
-    let mut mapper = unsafe { __meminit(phys_mem_offset) };
-    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
+    {
+        let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
 
-    arch::allocator::init_heap(&mut mapper, &mut frame_allocator).map_or_else(
-        |_| panic!("alloc: Failed to initialize heap..."),
-        |_| println!("alloc: Allocator init done..."),
-    );
+        let mut lock = globals::MAPPER.lock();
+        *lock = Some(unsafe { meminit(phys_mem_offset) });
 
-    init_scheduler(mapper, frame_allocator);
+        let mut lock = globals::FRAME_ALLOCATOR.lock();
+        *lock = Some(unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) });
+    }
+
+    arch::allocator::extend_heap()
+        .map(|(start, size)| globals::extend_alloc_heap(start, size))
+        .map_or_else(
+            |e| panic!("alloc: Failed to initialize heap...\n{}", e),
+            |_| {
+                println!("alloc: Allocator init done...");
+            },
+        );
+
+    init_scheduler();
 
     let mut pci = pci::Pci::new();
     pci.enumerate();
