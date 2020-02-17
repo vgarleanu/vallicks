@@ -3,8 +3,10 @@ use crate::{
     arch::pit::get_milis,
     prelude::*,
     schedule::stack::Stack,
+    sync::Arc,
 };
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use x86_64::{
     structures::paging::{mapper, FrameAllocator, Mapper, Size4KiB},
     VirtAddr,
@@ -95,5 +97,68 @@ impl Thread {
 
     pub fn park(&mut self, milis: u64) {
         self.parked = Some((get_milis(), milis));
+    }
+}
+
+pub struct Packet<T>(pub Arc<UnsafeCell<Option<T>>>);
+
+impl<T> Packet<T> {
+    fn new() -> Self {
+        Self(Arc::new(UnsafeCell::new(None)))
+    }
+}
+
+impl<T> Clone for Packet<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+unsafe impl<T: Send> Send for Packet<T> {}
+unsafe impl<T: Sync> Sync for Packet<T> {}
+
+pub struct Switch(AtomicBool);
+
+impl Switch {
+    pub fn new() -> Self {
+        Self(AtomicBool::new(true))
+    }
+
+    pub fn switch(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+pub struct JoinHandle<T> {
+    alive: Arc<Switch>,
+    inner: Packet<T>,
+}
+
+impl<T> JoinHandle<T> {
+    pub fn new() -> Self {
+        Self {
+            alive: Arc::new(Switch::new()),
+            inner: Packet::new(),
+        }
+    }
+
+    pub fn join(self) -> T {
+        loop {
+            if !self.alive.is_alive() {
+                unsafe { return (*self.inner.0.get()).take().unwrap() }
+            }
+        }
+    }
+
+    pub fn get_inner(&self) -> Packet<T> {
+        self.inner.clone()
+    }
+
+    pub fn get_switch(&self) -> Arc<Switch> {
+        self.alive.clone()
     }
 }

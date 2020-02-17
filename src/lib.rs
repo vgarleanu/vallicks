@@ -9,7 +9,8 @@
     raw,
     try_trait,
     never_type,
-    global_asm
+    global_asm,
+    get_mut_unchecked
 )]
 #![feature(type_alias_impl_trait)]
 extern crate alloc;

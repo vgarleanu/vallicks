@@ -7,9 +7,10 @@ use crate::{
     globals::{FRAME_ALLOCATOR, MAPPER, SCHEDULER},
     prelude::*,
     schedule::scheduler::Scheduler,
+    sync::Arc,
 };
 use switch::context_switch_to;
-use thread::{Thread, ThreadId};
+use thread::{JoinHandle, Thread, ThreadId};
 
 pub fn init_scheduler() {
     let mut lock = SCHEDULER.lock();
@@ -30,11 +31,11 @@ pub(crate) fn schedule() {
     }
 }
 
-pub fn spawn<F, T>(f: F)
+pub fn spawn<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T,
     F: Send + Sync + 'static,
-    T: Send + 'static,
+    T: Send + Sync + 'static,
 {
     let mut slock = SCHEDULER.lock();
     if slock.is_none() {
@@ -47,14 +48,22 @@ where
     let mapper = mlock.as_mut();
     let alloc = alock.as_mut();
 
+    let mut handle: JoinHandle<T> = JoinHandle::new();
+    let inner = handle.get_inner();
+    let mut switch = handle.get_switch();
+
     let thread = Thread::new(
-        || {
+        move || {
             let thread_id = {
                 let lock = SCHEDULER.lock();
                 lock.as_ref().unwrap().current_thread_id()
             };
 
-            f();
+            let ret = f();
+            unsafe {
+                Arc::get_mut_unchecked(&mut switch).switch();
+                *inner.0.get() = Some(ret);
+            }
 
             {
                 let mut lock = SCHEDULER.lock();
@@ -72,6 +81,7 @@ where
     .expect("scheduler: failed to spawn a thread");
 
     slock.as_mut().unwrap().add_new_thread(thread);
+    handle
 }
 
 pub fn current() -> ThreadId {

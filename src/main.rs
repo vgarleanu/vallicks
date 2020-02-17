@@ -3,7 +3,16 @@
 
 use vallicks::prelude::*;
 
+fn join_try() -> String {
+    thread::sleep(50);
+    String::from("Hello world from another thread")
+}
+
 #[entrypoint]
 fn main() {
-    thread::spawn(vallicks::net::stack::net_thread);
+    let handle = thread::spawn(join_try);
+
+    let ret = handle.join();
+
+    println!("{:?}", ret);
 }
