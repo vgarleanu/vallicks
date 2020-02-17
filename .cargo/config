@@ -1,5 +1,6 @@
 [build]
 target = "x86_64-barebone-none.json"
+rustflags = ["-Cno-redzone=yes"]
 
 [target.'cfg(target_os = "none")']
 runner = "bootimage runner"

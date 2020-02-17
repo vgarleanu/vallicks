@@ -68,16 +68,7 @@ pub fn init(boot_info: &'static BootInfo) {
     unsafe { arch::interrupts::PICS.lock().initialize() };
     println!("pic: PIC init done...");
 
-    // FIXME: Investigate as to why the PIT being set up in debug binary causes random page faults
-    //        and general memory crashes. For now, if we are not running in release mode, the PIT
-    //        will be enabled to the defaults.
-    //
-    // NOTE: Implement a APIC driver that hopfully eliminates the need for this workaround.
-    if !cfg!(debug_assertions) {
-        arch::pit::init();
-    } else {
-        println!("warning: running in debug mode, to avoid UB the pit has been disabled");
-    }
+    arch::pit::init();
 
     x86_64::instructions::interrupts::enable();
     println!("int: interrupts enabled");
