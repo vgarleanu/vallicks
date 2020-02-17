@@ -2,17 +2,18 @@
 #![no_main]
 
 use vallicks::prelude::*;
+use vallicks::schedule::thread::JoinHandle;
 
-fn join_try() -> String {
-    thread::sleep(50);
-    String::from("Hello world from another thread")
+fn join_try(i: u32) -> String {
+    format!("Hello from thread: {}", i)
 }
 
 #[entrypoint]
 fn main() {
-    let handle = thread::spawn(join_try);
+    let h = thread::spawn(|| join_try(12313));
+    let val = h.join();
+    println!("{}", val);
 
-    let ret = handle.join();
-
-    println!("{:?}", ret);
+    let h = thread::spawn(|| join_try(12313));
+    println!("{}", h.join());
 }

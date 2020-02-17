@@ -5,7 +5,7 @@ use x86_64::instructions::port::Port;
 const PIT_CH0: u16 = 0x40; // Channel 0 data port (read/write) (PIC TIMER)
 const PIT_REG: u16 = 0x43; // Mode/Command register (write only, a read is ignored)
 
-const TARGET_FREQ: u64 = 5000; // Hz
+const TARGET_FREQ: u64 = 50000; // Hz
 const RELOAD_VALUE: u64 = 1193182 / TARGET_FREQ;
 
 lazy_static::lazy_static! {

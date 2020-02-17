@@ -61,8 +61,8 @@ where
 
             let ret = f();
             unsafe {
-                Arc::get_mut_unchecked(&mut switch).switch();
                 *inner.0.get() = Some(ret);
+                Arc::get_mut_unchecked(&mut switch).switch();
             }
 
             {

@@ -146,10 +146,11 @@ impl<T> JoinHandle<T> {
         }
     }
 
-    pub fn join(self) -> T {
+    pub fn join(mut self) -> T {
         loop {
             if !self.alive.is_alive() {
-                unsafe { return (*self.inner.0.get()).take().unwrap() }
+                let ret = unsafe { (*self.inner.0.get()).take().unwrap() };
+                return ret;
             }
         }
     }
