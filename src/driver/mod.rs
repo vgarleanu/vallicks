@@ -1,3 +1,8 @@
+//! Kernel drivers
+//! This module is holds the basic kernel driver loading logic and structures. It is also home to
+//! some default drivers are already implemented here and preloaded.
+#![allow(missing_docs)]
+
 use crate::arch::pci::Device;
 use crate::prelude::{sync::Mutex, *};
 use lazy_static::lazy_static;

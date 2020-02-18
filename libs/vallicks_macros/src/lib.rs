@@ -41,11 +41,12 @@ pub fn main(_: TokenStream, item: TokenStream) -> TokenStream {
             println!("Booted in {}ms", timer::get_milis());
 
             // We spawn the old main inside a closure as a separate thread
-            thread::spawn(||{
+            let main_thread = thread::spawn(||{
                 #body
             });
 
-            // NOTE: Do not add anymore code after the main body has been called.
+            // We attempt to join this thread, if the thread panics we send a ErrorCode downstream
+            // to qemu
             halt();
         }
     };

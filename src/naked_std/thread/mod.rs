@@ -561,7 +561,7 @@ impl ThreadId {
 /// this type is inherently Sync because no methods take &self. Regardless,
 /// however, we add inheriting impls for Send/Sync to this type to ensure it's
 /// Send/Sync.
-pub struct Packet<T>(Arc<UnsafeCell<Option<T>>>);
+pub(crate) struct Packet<T>(Arc<UnsafeCell<Option<T>>>);
 
 impl<T> Packet<T> {
     /// Creates a new Packet instance with the default value None
@@ -585,21 +585,21 @@ unsafe impl<T: Sync> Sync for Packet<T> {}
 /// * The scheduler to mark this thread as panicking
 ///
 /// This implementation is inherently safe due to the usafe of the AtomicBool.
-pub struct Switch(AtomicBool);
+pub(crate) struct Switch(AtomicBool);
 
 impl Switch {
     /// Method creates a new switch with the default value true
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self(AtomicBool::new(true))
     }
 
     /// Method flips the switch, turning the inner value from true to false
-    pub fn switch(&mut self) {
+    fn switch(&mut self) {
         self.0.store(false, Ordering::SeqCst);
     }
 
     /// Method returns the inner value
-    pub fn is_alive(&self) -> bool {
+    fn is_alive(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
 }
@@ -692,19 +692,19 @@ impl<T> JoinHandle<T> {
     /// Method returns a new copy of the inner channel over which the thread will send its return
     /// value. This function is inherently unsafe as having multiple copies will cause UB, but this
     /// function only ever gets called once.
-    pub(super) fn get_inner(&self) -> Packet<T> {
+    fn get_inner(&self) -> Packet<T> {
         self.inner.clone()
     }
 
     /// Method returns a packet channel specifically intended for the panic handler and scheduler
     /// to send panic info and messages downstream which get returned ass Err()
-    pub(super) fn get_panic(&self) -> Packet<String> {
+    fn get_panic(&self) -> Packet<String> {
         self.panic_state.clone()
     }
 
     /// Switch given to a thread and the scheduler to mark JoinHandle's as joinable. Once the
     /// switch is flipped, the join method will return.
-    pub(super) fn get_switch(&self) -> Arc<Switch> {
+    fn get_switch(&self) -> Arc<Switch> {
         self.alive.clone()
     }
 }
@@ -744,7 +744,7 @@ pub struct Thread {
 impl Thread {
     /// This method creates a new thread object and begins setting up and preparing the stack for
     /// execution.
-    pub fn new<F>(
+    fn new<F>(
         closure: F,
         stack_size: u64,
         panic_state: Packet<String>,
@@ -783,7 +783,7 @@ impl Thread {
     }
 
     /// Method creates a blank empty root thread used by the scheduler
-    pub fn create_root_thread() -> Self {
+    pub(crate) fn create_root_thread() -> Self {
         Self {
             id: ThreadId(0),
             parked: None,

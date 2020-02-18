@@ -1,16 +1,86 @@
 //! Vallicks
 //! Vallicks is a x86_64 unikernel designed to be a drop-in replacement for rust's stdlib, offering
 //! a equivalent API that runs on bare metal without the overhead of a full blown operating system.
+//!
 //! With normal user space programs, the application runs naturally under an Operating System, be
 //! it Windows or Linux. With vallicks the App itself is the operating system. An advantage of this
 //! is that everything runs in Ring-0 removing a lot of the overhead of syscalls. Vallicks also
 //! comes bundled with only necessary drivers, all of which are feature gated, allowing the
-//! outputted image to be highly specialized to the running enviroment.
+//! outputted image to be highly specialized to the running enviroment. Therefore one could say
+//! that this unikernel is more of bare metal runtime than anything else.
 //!
 //! This unikernel is also designed to be as extensible as possible. The kernel abstracts away all
 //! driver interaction between the standard library and the end user. Allowing the end coder to
 //! drop in whatever driver modules they want. Doing so wont require any alteration whatsoever to
-//! normal program code.
+//! normal program code. In turn this project is very similar to IncludeOS.
+//!
+//! Vallicks comes in two parts. First you have `vallicks::*` itself which contains most/all
+//! critical kernel code, usually located in `vallicks::arch`, `vallicks::driver` and
+//! `vallicks::schedule`. Most of the kernel code is made private by default to minimize the risk
+//! of accidentally calling some critical function that can crash the entire kernel. The second
+//! part is what we call `naked_std`.
+//!
+//! naked_std is the standard library for this kernel which has the aim to be API wise almost
+//! identical to the rust standard library. This in turn allowing platform specific code to be
+//! easily ported to run under vallicks.
+//!
+//! Although it all sounds simple enough there are some caveats to using this library. One of them
+//! is that we cannot inform `rustc` that this is indeed a standard library. Because of this the
+//! main program has to manually import `vallicks::prelude::*` and `vallicks::naked_std`. Secondly
+//! we mut mark the application itself as `#[no_std]`. Lastly we need to mark the entry point for
+//! the application. The function can still be called `main`, but you have to place the attribute
+//! macro `#[entrypoint]` above it.
+//!
+//! The entrypoint attribute macro does several things. First it informs the bootloader the
+//! bootloader what the entrypoint of the kernel is. In our case it will be the `main` function.
+//! Next it prepares and boots the kernel by calling the `vallicks::init` function and passing it
+//! the `BootInfo` struct which contains some vital information needed for correct operation.
+//! The actual body of the function gets moved into a thread which we call the main_thread. The
+//! main function then attempts to join the main_thread. If the main_thread panics we return a Qemu
+//! failure exit code, otherwise we return a success and halt indefinetely.
+//! There are planned ways to specify what the abort behaviour should be, and one of them is to
+//! reboot the virtual machine.
+//!
+//! To illustrate that, here is a example hello world
+//! ```rust
+//! #[no_std]
+//! #[no_main]
+//! use vallicks::prelude::*;
+//!
+//! #[entrypoint]
+//! fn main() {
+//!     println!("Hello world");
+//! }
+//! ```
+//!
+//! That snippet then expands into:
+//! ```rust
+//! #[no_std]
+//! #[no_main]
+//! use vallicks::prelude::*;
+//!
+//! bootloader::entrypoint!(#name);
+//! fn main(boot_info: &'static bootloader::BootInfo) -> ! {
+//!     println!("Booting... Standy...");
+//!     vallicks::init(boot_info);
+//!     println!("Booted in {}ms", timer::get_milis());
+//!
+//!     let main_thread = thread::spawn(|| {
+//!         println!("Hello world");
+//!     });
+//!
+//!     match main_thread.join() {
+//!         Ok(_) => exit(ExitCode::Success),
+//!         Err(_) => exit(ExitCode::Failed),
+//!     }
+//!
+//!     halt();
+//! }
+//! ```
+//! The entrypoint macro makes it convinient to boot up the kernel allowing us to automatically
+//! start writing userland code, without the need to manually set up the kernel. In addition to
+//! that, the entrypoint macro will make it easier for users to migrate from versions of the kernel
+//! where the API has changed in some way.
 #![no_std]
 #![cfg_attr(test, no_main)]
 #![feature(
@@ -27,7 +97,6 @@
     type_alias_impl_trait,
     prelude_import
 )]
-#![forbid(missing_docs)]
 extern crate alloc;
 
 /// The arch module holds the lowlevel initation functions to prepare the CPU for the kernel.
