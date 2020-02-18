@@ -1,10 +1,7 @@
 #[allow(unused_imports)]
 pub use crate::{print, println, sprint, sprintln};
 
-pub use alloc::{boxed::Box, string::String, vec::Vec, format};
-
-#[allow(unused_imports)]
-pub use crate::schedule as thread;
+pub use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 // TODO: Make this exit thread based instead
 #[allow(unused_imports)]

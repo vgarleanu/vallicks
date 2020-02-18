@@ -1,19 +1,26 @@
 #![no_std]
 #![no_main]
 
+use vallicks::naked_std::thread;
 use vallicks::prelude::*;
-use vallicks::schedule::thread::JoinHandle;
 
 fn join_try(i: u32) -> String {
-    format!("Hello from thread: {}", i)
+    format!(
+        "Hello from thread: {} with {}",
+        thread::current().as_u64(),
+        i
+    )
 }
 
 #[entrypoint]
 fn main() {
-    let h = thread::spawn(|| join_try(12313));
-    let val = h.join();
-    println!("{}", val);
+    let mut threads = Vec::new();
 
-    let h = thread::spawn(|| join_try(12313));
-    println!("{}", h.join());
+    for i in 0..2 {
+        threads.push(thread::spawn(move || join_try(i)));
+    }
+
+    for i in threads.drain(..) {
+        println!("{}", i.join());
+    }
 }

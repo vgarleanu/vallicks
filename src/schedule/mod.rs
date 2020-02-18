@@ -1,7 +1,7 @@
 pub mod scheduler;
 pub mod stack;
 pub mod switch;
-pub mod thread;
+pub use crate::naked_std::thread;
 
 use crate::{
     globals::{FRAME_ALLOCATOR, MAPPER, SCHEDULER},
@@ -31,60 +31,7 @@ pub(crate) fn schedule() {
     }
 }
 
-pub fn spawn<F, T>(f: F) -> JoinHandle<T>
-where
-    F: FnOnce() -> T,
-    F: Send + Sync + 'static,
-    T: Send + Sync + 'static,
-{
-    let mut slock = SCHEDULER.lock();
-    if slock.is_none() {
-        panic!("schedule::spawn: SCHEDULER is none, BUG");
-    }
-
-    let mut mlock = MAPPER.lock();
-    let mut alock = FRAME_ALLOCATOR.lock();
-
-    let mapper = mlock.as_mut();
-    let alloc = alock.as_mut();
-
-    let mut handle: JoinHandle<T> = JoinHandle::new();
-    let inner = handle.get_inner();
-    let mut switch = handle.get_switch();
-
-    let thread = Thread::new(
-        move || {
-            let thread_id = {
-                let lock = SCHEDULER.lock();
-                lock.as_ref().unwrap().current_thread_id()
-            };
-
-            let ret = f();
-            unsafe {
-                *inner.0.get() = Some(ret);
-                Arc::get_mut_unchecked(&mut switch).switch();
-            }
-
-            {
-                let mut lock = SCHEDULER.lock();
-                lock.as_mut().unwrap().remove_thread(thread_id);
-            }
-
-            loop {
-                x86_64::instructions::hlt()
-            }
-        },
-        2,
-        mapper.unwrap(),
-        alloc.unwrap(),
-    )
-    .expect("scheduler: failed to spawn a thread");
-
-    slock.as_mut().unwrap().add_new_thread(thread);
-    handle
-}
-
-pub fn current() -> ThreadId {
+pub fn current_thread_id() -> ThreadId {
     let mut slock = SCHEDULER.lock();
     if slock.is_none() {
         panic!("schedule::current: SCHEDULER is none, BUG");
@@ -93,7 +40,29 @@ pub fn current() -> ThreadId {
     slock.as_mut().unwrap().current_thread_id()
 }
 
-pub fn sleep(milis: u64) {
+pub fn remove_self() {
+    let mut slock = SCHEDULER.lock();
+    let mut scheduler = slock.as_mut().unwrap();
+
+    let current = scheduler.current_thread_id();
+    scheduler.remove_thread(current);
+}
+
+pub unsafe fn add_new_thread(t: Thread) {
+    let mut slock = SCHEDULER.lock();
+    slock.as_mut().unwrap().add_new_thread(t);
+}
+
+pub fn yield_now() {
+    unimplemented!("yield_now");
+}
+
+pub fn is_aborted() -> bool {
+    false
+}
+
+// TODO: Refactor this
+pub fn park_current(milis: u64) {
     loop {
         let next = {
             let mut slock = SCHEDULER.lock();

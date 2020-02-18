@@ -2,6 +2,7 @@ use crate::driver::*;
 use crate::net::frames::{
     arp::ArpPacket, eth2::Ether2Frame, icmp::Icmp, ipaddr::Ipv4Addr, ipv4::Ipv4, mac::Mac,
 };
+use crate::naked_std::thread;
 use crate::prelude::*;
 use core::array::TryFromSliceError;
 use core::convert::TryInto;

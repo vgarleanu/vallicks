@@ -21,6 +21,7 @@ pub(crate) mod globals;
 pub mod net;
 pub mod prelude;
 pub mod schedule;
+pub mod naked_std;
 
 #[allow(unused_imports)]
 use crate::{
