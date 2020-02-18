@@ -40,6 +40,15 @@ pub fn current_thread_id() -> ThreadId {
     slock.as_mut().unwrap().current_thread_id()
 }
 
+pub fn safe_current_thread_id() -> ThreadId {
+    let mut slock = SCHEDULER.lock();
+    if slock.is_none() {
+        return ThreadId::default();
+    }
+
+    slock.as_mut().unwrap().current_thread_id()
+}
+
 pub fn remove_self() {
     let mut slock = SCHEDULER.lock();
     let mut scheduler = slock.as_mut().unwrap();
@@ -54,14 +63,21 @@ pub unsafe fn add_new_thread(t: Thread) {
 }
 
 pub fn yield_now() {
-    unimplemented!("yield_now");
+    let next = {
+        let mut slock = SCHEDULER.lock();
+        slock.as_mut().unwrap().schedule()
+    };
+    if let Some((next_id, next_stack_pointer)) = next {
+        unsafe {
+            let _ = context_switch_to(next_id, next_stack_pointer);
+        };
+    }
 }
 
 pub fn is_aborted() -> bool {
     false
 }
 
-// TODO: Refactor this
 pub fn park_current(milis: u64) {
     loop {
         let next = {
@@ -71,16 +87,18 @@ pub fn park_current(milis: u64) {
         };
 
         if let Some((next_id, next_stack_pointer)) = next {
-            // We dont actually care if theres no paused thread
             unsafe {
                 let _ = context_switch_to(next_id, next_stack_pointer);
             };
             break;
         }
-
-        // We halt for a cycle to not eat up the cpu
         unsafe {
             asm!("hlt" :::: "volatile");
         }
     }
+}
+
+pub fn mark_dirty(panic_info: String) {
+    let mut slock = SCHEDULER.lock();
+    slock.as_mut().unwrap().mark_dirty(panic_info);
 }

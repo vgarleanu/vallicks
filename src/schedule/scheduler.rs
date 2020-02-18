@@ -107,4 +107,14 @@ impl Scheduler {
 
         self.remove_thread(self.current_thread_id);
     }
+
+    pub(super) fn mark_dirty(&mut self, panic_info: String) {
+        let id = self.current_thread_id();
+        println!("scheduler::warn marking thread {} as dirty", id.as_u64());
+
+        match self.threads.remove(&id) {
+            Some(mut x) => x.set_panicking(panic_info),
+            None => println!("scheduler: a thread that doesnt exist panic'd"),
+        }
+    }
 }

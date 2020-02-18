@@ -48,6 +48,7 @@ impl Builder {
     {
         let mut handle: JoinHandle<T> = JoinHandle::new();
         let mut switch = handle.get_switch();
+        let mut panic_state = handle.get_panic();
         let inner = handle.get_inner();
 
         let thread = Thread::new(
@@ -64,6 +65,8 @@ impl Builder {
                 }
             },
             self.stack_size.unwrap_or(2),
+            panic_state,
+            handle.get_switch(),
         );
 
         unsafe {
@@ -97,7 +100,6 @@ pub fn panicking() -> bool {
 
 pub fn sleep(ms: u64) {
     scheduler::park_current(ms);
-    //yield_now();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -107,6 +109,10 @@ impl ThreadId {
     fn new() -> Self {
         static NEXT_THREAD_ID: AtomicU64 = AtomicU64::new(1);
         ThreadId(NEXT_THREAD_ID.fetch_add(1, Ordering::SeqCst))
+    }
+
+    pub(crate) fn default() -> Self {
+        ThreadId(0)
     }
 
     pub fn as_u64(&self) -> u64 {
@@ -150,6 +156,7 @@ impl Switch {
 pub struct JoinHandle<T> {
     alive: Arc<Switch>,
     inner: Packet<T>,
+    panic_state: Packet<String>,
 }
 
 impl<T> JoinHandle<T> {
@@ -157,36 +164,50 @@ impl<T> JoinHandle<T> {
         Self {
             alive: Arc::new(Switch::new()),
             inner: Packet::new(),
+            panic_state: Packet::new(),
         }
     }
 
-    pub fn join(mut self) -> T {
+    pub fn join(mut self) -> Result<T, String> {
         loop {
             if !self.alive.is_alive() {
-                return unsafe { (*self.inner.0.get()).take().unwrap() };
+                match unsafe { (*self.panic_state.0.get()).take() } {
+                    Some(x) => return Err(x),
+                    None => return unsafe { Ok((*self.inner.0.get()).take().unwrap()) },
+                }
             }
         }
     }
 
-    pub fn get_inner(&self) -> Packet<T> {
+    pub(super) fn get_inner(&self) -> Packet<T> {
         self.inner.clone()
     }
 
-    pub fn get_switch(&self) -> Arc<Switch> {
+    pub(super) fn get_panic(&self) -> Packet<String> {
+        self.panic_state.clone()
+    }
+
+    pub(super) fn get_switch(&self) -> Arc<Switch> {
         self.alive.clone()
     }
 }
 
-#[derive(Debug)]
 pub struct Thread {
     id: ThreadId,
     parked: Option<(u64, u64)>,
     stack_pointer: Option<VirtAddr>,
     stack_bounds: Option<StackBounds>,
+    panic_state: Packet<String>,
+    switch: Arc<Switch>,
 }
 
 impl Thread {
-    pub fn new<F>(closure: F, stack_size: u64) -> Result<Self, mapper::MapToError>
+    pub fn new<F>(
+        closure: F,
+        stack_size: u64,
+        panic_state: Packet<String>,
+        switch: Arc<Switch>,
+    ) -> Result<Self, mapper::MapToError>
     where
         F: FnOnce() -> !,
         F: Send + Sync + 'static,
@@ -213,6 +234,8 @@ impl Thread {
             parked: None,
             stack_pointer: Some(stack.get_stack_pointer()),
             stack_bounds: Some(stack_bounds),
+            panic_state,
+            switch,
         })
     }
 
@@ -226,6 +249,8 @@ impl Thread {
             parked: None,
             stack_pointer: None,
             stack_bounds: None,
+            panic_state: Packet::new(), // we dont actually care
+            switch: Arc::new(Switch::new()),
         }
     }
 
@@ -249,5 +274,22 @@ impl Thread {
 
     pub fn park(&mut self, milis: u64) {
         self.parked = Some((get_milis(), milis));
+    }
+
+    pub(crate) fn set_panicking(&mut self, reason: String) {
+        unsafe {
+            *self.panic_state.0.get() = Some(reason);
+            Arc::get_mut_unchecked(&mut self.switch).switch();
+        }
+    }
+}
+
+impl core::fmt::Debug for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(
+            f,
+            "Thread {{ id: {:?}, parked: {:?}, stack_pointer: {:?}, stack_bounds: {:?} }}",
+            self.id, self.parked, self.stack_pointer, self.stack_bounds
+        )
     }
 }

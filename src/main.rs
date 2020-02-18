@@ -16,11 +16,14 @@ fn join_try(i: u32) -> String {
 fn main() {
     let mut threads = Vec::new();
 
+    let mut should_panic = thread::spawn(|| panic!("This thread should panic"));
+    println!("{:?}", should_panic.join());
+
     for i in 0..2 {
         threads.push(thread::spawn(move || join_try(i)));
     }
 
     for i in threads.drain(..) {
-        println!("{}", i.join());
+        println!("{:?}", i.join());
     }
 }

@@ -18,10 +18,10 @@ extern crate alloc;
 pub mod arch;
 pub mod driver;
 pub(crate) mod globals;
+pub mod naked_std;
 pub mod net;
 pub mod prelude;
 pub mod schedule;
-pub mod naked_std;
 
 #[allow(unused_imports)]
 use crate::{
@@ -88,9 +88,7 @@ pub fn init(boot_info: &'static BootInfo) {
         .map(|(start, size)| globals::extend_alloc_heap(start, size))
         .map_or_else(
             |e| panic!("alloc: Failed to initialize heap...\n{}", e),
-            |_| {
-                println!("alloc: Allocator init done...");
-            },
+            |_| println!("alloc: Allocator init done..."),
         );
 
     init_scheduler();
@@ -118,6 +116,13 @@ pub fn hlt_loop() -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    // If current_thread_id is 0 that means that the panic was before the main thread was launched
+    // if that is the case we simply want to print and halt, otherwise we inform the scheduler to
+    // mark the thread as dirty
+    if schedule::current_thread_id().as_u64() != 0 {
+        schedule::mark_dirty(format!("{}", info));
+    }
+
     println!("{}", info);
     halt();
 }
