@@ -116,11 +116,14 @@ pub fn hlt_loop() -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    let thread_id = schedule::current_thread_id().as_u64();
     // If current_thread_id is 0 that means that the panic was before the main thread was launched
     // if that is the case we simply want to print and halt, otherwise we inform the scheduler to
     // mark the thread as dirty
-    if schedule::current_thread_id().as_u64() != 0 {
+    if thread_id != 0 {
+        println!("thread {} has panic'd with {}", thread_id, info);
         schedule::mark_dirty(format!("{}", info));
+        halt();
     }
 
     println!("{}", info);
