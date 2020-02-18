@@ -1,12 +1,15 @@
 use core::array::TryFromSliceError;
 use core::convert::{AsRef, From, TryFrom, TryInto};
 
+/// Struct represents a IP version 4 address
 #[derive(Clone, Copy)]
 pub struct Ipv4Addr {
+    /// Inner bytes of the IP address
     inner: [u8; 4],
 }
 
 impl Ipv4Addr {
+    /// Method constructs a new IP from the given levels.
     pub fn new(a: u8, b: u8, c: u8, d: u8) -> Self {
         Self {
             inner: [a, b, c, d],

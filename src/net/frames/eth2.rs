@@ -3,15 +3,27 @@ use crate::prelude::*;
 use core::array::TryFromSliceError;
 use core::convert::{Into, TryFrom, TryInto};
 
+/// Structure represents a basic Ethernet II frame.
 #[derive(Eq, PartialEq, Clone)]
 pub struct Ether2Frame {
+    /// Destination MAC address
     dst: Mac,
+    /// Source MAC Address
     src: Mac,
+    /// Data type
     dtype: u16,
+    /// Frame extracted.
     frame: Vec<u8>,
 }
 
 impl Ether2Frame {
+    /// Creates a new bare Eth2 frame from the given parameters
+    /// 
+    /// # Arguments
+    /// * `dst` - The destination for this packet
+    /// * `src` - The source for this packet
+    /// * `dtype` - The data type for the frame
+    /// * `frame` - The actual frame to send downstream
     pub fn new(dst: Mac, src: Mac, dtype: u16, frame: Vec<u8>) -> Self {
         Self {
             dst,
@@ -21,11 +33,13 @@ impl Ether2Frame {
         }
     }
 
+    /// Returns the dtype of this frame.
     // TODO: Return enum instead
     pub fn dtype(&self) -> u16 {
         self.dtype
     }
 
+    /// Returns the entire frame.
     pub fn frame(&self) -> Vec<u8> {
         self.frame.clone()
     }

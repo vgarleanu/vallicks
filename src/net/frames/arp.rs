@@ -3,19 +3,31 @@ use crate::prelude::*;
 use core::array::TryFromSliceError;
 use core::convert::{TryFrom, TryInto};
 
+/// This struct holds the structure of ARP packets.
+/// TODO: Unit tests
+/// TODO: Enums where possible
 #[derive(Debug, Clone)]
 pub struct ArpPacket {
+    /// Hardware type
     pub hardware_type: u16,
+    /// Protocol
     pub protocol: u16,
 
+    /// Hardware size
     pub hardware_size: u8,
+    /// Protocol size
     pub protocol_size: u8,
 
+    /// Opcode
     pub opcode: u16,
 
+    /// Sender MAC address
     pub smac: Mac,
+    /// Sender IP address
     pub sip: Ipv4Addr,
+    /// Target MAC address
     pub tmac: Mac,
+    /// Target IP address
     pub tip: Ipv4Addr,
 }
 

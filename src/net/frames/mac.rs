@@ -1,7 +1,9 @@
 use core::convert::{AsRef, From, TryInto};
 
+/// Represents a MAC address
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
 pub struct Mac {
+    /// The inner bytes of our mac address.
     inner: [u8; 6],
 }
 

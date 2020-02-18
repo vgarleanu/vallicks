@@ -6,13 +6,21 @@ use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;
 use x86_64::VirtAddr;
 
+/// Struct represents our scheduler and holds all the data required for switching between tasks.
+/// The scheduler operates in a round robin fashion.
 pub struct Scheduler {
+    /// This is our list of threads we want to execute.
     threads: BTreeMap<ThreadId, Thread>,
+    /// This is the id of the thread that is executing currently.
     current_thread_id: ThreadId,
+    /// This is a deque of all the paused threads. When we switch from one thread to another, the
+    /// previous thread gets put into this VecDeque to be later popped off and executed.
     paused_threads: VecDeque<ThreadId>,
 }
 
 impl Scheduler {
+    /// Method returns a new instance of a scheduler. Technically speaking this method only ever
+    /// gets called once during kernel init, or it never gets called if the scheduler is disabled.
     pub fn new() -> Self {
         let root_thread = Thread::create_root_thread();
         let root_id = root_thread.id();
@@ -29,6 +37,8 @@ impl Scheduler {
         }
     }
 
+    /// Method tries to pop a paused thread from our VecDeque and return it as a tuple of its
+    /// Unique ID and the thread itself as a mutable reference.
     fn next_thread(&mut self) -> Option<(ThreadId, &mut Thread)> {
         if let Some(tid) = self.paused_threads.pop_front() {
             if let Some(thread) = self.threads.get_mut(&tid) {
@@ -40,6 +50,10 @@ impl Scheduler {
         None
     }
 
+    /// This is the method that does all the magic. The method grabs a paused thread, if there is
+    /// none then it just returns None. Then it checks if the thread is ready to be executed. If
+    /// the thread is ready to be executed it returns  a tuple of the ID of the thread and its
+    /// stack pointer. This is later used to do a context switch.
     pub fn schedule(&mut self) -> Option<(ThreadId, VirtAddr)> {
         if let Some((tid, thread)) = self.next_thread() {
             if !thread.is_ready() {
@@ -58,7 +72,12 @@ impl Scheduler {
         None
     }
 
-    pub(super) fn add_paused_thread(
+    /// This method pushes the current thread into the paused threads deque.
+    ///
+    /// # Arguments
+    /// * `paused_stack_pointer` - This is the new paused stack pointer of our thread.
+    /// * `next_thread_id` - This is the id of the next thread that will be executed.
+    pub fn add_paused_thread(
         &mut self,
         paused_stack_pointer: VirtAddr,
         next_thread_id: ThreadId,
@@ -74,6 +93,10 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Method adds a new thread to be executed later.
+    ///
+    /// # Arguments
+    /// * `thread` - The new thread to be executed in the future
     pub fn add_new_thread(&mut self, thread: Thread) {
         let thread_id = thread.id();
         self.threads
@@ -82,11 +105,21 @@ impl Scheduler {
         self.paused_threads.push_back(thread_id);
     }
 
-    pub(super) fn current_thread_id(&self) -> ThreadId {
+    /// Method returns the ID of the thread executing in the very current moment.
+    pub fn current_thread_id(&self) -> ThreadId {
         self.current_thread_id
     }
 
-    pub(super) fn remove_thread(&mut self, id: ThreadId) {
+    /// Method removes the thread with the ID supplies from the scheduler, essentially cancelling
+    /// its execution.
+    ///
+    /// # Safety
+    /// Be careful when using this method because if the threads handle isnt informed that the
+    /// thread stopped executing, will cause a infinite loop when joining.
+    ///
+    /// # Arguments
+    /// * `id` - The id of the thread we wish to kill.
+    pub fn remove_thread(&mut self, id: ThreadId) {
         if self.threads.remove(&id).is_none() {
             println!("scheduler: warn attempted to remove thread that doesnt exist in the pool");
         }
@@ -94,7 +127,11 @@ impl Scheduler {
         self.paused_threads.retain(|&x| x != id);
     }
 
-    pub(super) fn park_current(&mut self, milis: u64) {
+    /// Method parks the current thread for `milis` number of miliseconds.
+    ///
+    /// # Arguments
+    /// * `milis` - number of miliseconds to sleep for
+    pub fn park_current(&mut self, milis: u64) {
         if let Some(thread) = self.threads.get_mut(&self.current_thread_id) {
             thread.park(milis);
             return;
@@ -108,7 +145,17 @@ impl Scheduler {
         self.remove_thread(self.current_thread_id);
     }
 
-    pub(super) fn mark_dirty(&mut self, panic_info: String) {
+    /// Method marks the current thread as dirty. This is only necessary when the thread has
+    /// unexpectedly panicked.
+    /// When the thread panics, the panic handler will call this method and pass it the panic_info
+    /// as a string. The scheduler then removes the thread from the task list, the thread is then
+    /// set as panicking. This has two side effects, one is that the panic info is dispatched to
+    /// our JoinHandle, then the JoinHandle is informed that the thread has finished execution.
+    /// When the JoinHandle is joined, it is supposed to return a `Err()` with our panic info.
+    ///
+    /// # Arguments
+    /// * `panic_info` - This is the message passed to our panic handler giving some info
+    pub fn mark_dirty(&mut self, panic_info: String) {
         let id = self.current_thread_id();
         println!("scheduler::warn marking thread {} as dirty", id.as_u64());
 

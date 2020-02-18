@@ -6,34 +6,54 @@ use core::convert::Into;
 use core::convert::TryFrom;
 use core::convert::TryInto;
 
+/// The bare structure of Ipv4 packets
+/// TODO: Use enums where possible
+/// TODO: Unit tests
 #[derive(Clone, Debug)]
 pub struct Ipv4 {
+    /// Version of the packet, can be 4 or 6
     version: u8,
+    /// The total length of the header
     hdr_len: u8,
+    /// Dunno
     dscp: u8,
+    /// Dunno
     ecn: u8,
+    /// Total length??
     len: u16,
+    /// ID of the packet
     id: u16,
+    /// Flags for the packet
     flags: u8,
+    /// Offset
     offset: u16,
+    /// Time to live for the packet
     ttl: u8,
+    /// Protocol ID
     proto: u8,
+    /// Packet checksum
     checksum: u16,
+    /// Send IP
     sip: Ipv4Addr,
+    /// Destination IP
     dip: Ipv4Addr,
 
+    /// Data extracted after the packet
     data: Vec<u8>,
 }
 
 impl Ipv4 {
+    /// Method retruns the length of the packet.
     pub fn len(&self) -> u16 {
         self.len
     }
 
+    /// Method returns the protocol id for this packet.
     pub fn proto(&self) -> u8 {
         self.proto
     }
 
+    /// Method returns the data extracted after the packet
     pub fn data(&self) -> Vec<u8> {
         self.data.clone()
     }

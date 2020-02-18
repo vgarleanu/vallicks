@@ -14,12 +14,13 @@ fn join_try(i: u32) -> String {
 
 #[entrypoint]
 fn main() {
+    let mut test = Vec::new();
+    for i in 0..1024 {
+        test.push(String::from("FUCK FUCK FUCK"));
+    }
     let mut threads = Vec::new();
 
-    let mut should_panic = thread::spawn(|| panic!("This thread should panic"));
-    println!("{:?}", should_panic.join());
-
-    for i in 0..2 {
+    for i in 0..3 {
         threads.push(thread::spawn(move || join_try(i)));
     }
 

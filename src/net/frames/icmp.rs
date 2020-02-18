@@ -6,14 +6,23 @@ use core::convert::Into;
 use core::convert::TryFrom;
 use core::convert::TryInto;
 
+/// Our basic ICMP packet struct.
+/// TODO: Better packet structure docs.
 #[derive(Clone, Debug)]
 pub struct Icmp {
+    /// the Operation type of the ICMP packet.
     op_type: u8,
+    /// The code of the packet.
     code: u8,
+    /// The checksum of the packet.
     checksum: u16,
+    /// The packet id in big endian form.
     id_be: u16,
+    /// The packet id in little endian form.
     id_le: u16,
+    /// The packet sequence number in big endian form.
     seq_be: u16,
+    /// The packet sequence number in little endian form.
     seq_le: u16,
 }
 

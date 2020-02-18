@@ -24,6 +24,7 @@ global_asm!(
 "
 );
 
+/// Method takes in the thread id and and the new stack pointer for the task to switch to.
 pub unsafe fn context_switch_to(thread_id: ThreadId, stack_pointer: VirtAddr) {
     asm!(
         "call asm_context_switch"
@@ -35,6 +36,7 @@ pub unsafe fn context_switch_to(thread_id: ThreadId, stack_pointer: VirtAddr) {
     );
 }
 
+/// This method pushes our puased stack pointer and id to the scheduler.
 #[no_mangle]
 pub extern "C" fn add_paused_thread(paused_stack_pointer: VirtAddr, new_thread_id: ThreadId) {
     let mut lock = SCHEDULER.lock();
@@ -44,6 +46,8 @@ pub extern "C" fn add_paused_thread(paused_stack_pointer: VirtAddr, new_thread_i
         .add_paused_thread(paused_stack_pointer, new_thread_id);
 }
 
+/// This is the naked function that spins up our thread by popping the data and the vtable off the
+/// stack then calling call_closure which calls our real thread code.
 #[naked]
 pub fn call_closure_entry() -> ! {
     unsafe {
@@ -56,6 +60,8 @@ pub fn call_closure_entry() -> ! {
     unreachable!("call_closure_entry");
 }
 
+/// This function transmutes our trait object from the stack into a Boxed FnOnce trait object and
+/// calls it.
 #[no_mangle]
 extern "C" fn call_closure(data: *mut (), vtable: *mut ()) -> ! {
     let trait_object = TraitObject { data, vtable };

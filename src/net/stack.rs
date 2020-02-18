@@ -7,6 +7,7 @@ use crate::prelude::*;
 use core::array::TryFromSliceError;
 use core::convert::TryInto;
 
+/// TODO: FINISH THE NET STACK BEFORE DOCS
 pub fn net_thread() {
     let mut lock = DRIVERS.lock();
     let ip = Ipv4Addr::new(192, 168, 100, 51);
@@ -51,6 +52,7 @@ pub fn net_thread() {
     }
 }
 
+/// Methos responds to a arp ping
 pub fn handle_arp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) -> Ether2Frame {
     let arp_frame: ArpPacket = frame.frame().try_into().unwrap();
 
@@ -65,6 +67,7 @@ pub fn handle_arp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) 
     Ether2Frame::new(arp_frame.smac, driver.mac(), 0x0806, reply.into())
 }
 
+/// Method responds to a icmp ping
 pub fn handle_icmp(frame: &Ether2Frame, driver: &rtl8139::RTL8139, ip: Ipv4Addr) {
     let ipv4: Ipv4 = frame.frame().try_into().unwrap();
     println!("{:#?}", ipv4);
