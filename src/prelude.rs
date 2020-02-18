@@ -21,7 +21,7 @@ pub mod timer {
 /// This module provides basic primitives for thread sync
 pub mod sync {
     pub use alloc::sync::Arc;
-    pub use spin::{Mutex, RwLock};
+    pub use spin::{Mutex, MutexGuard, RwLock};
 }
 
 pub use vallicks_macros::{compile_warning, main as entrypoint};

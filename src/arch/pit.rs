@@ -46,5 +46,5 @@ pub fn get_secs() -> u64 {
 
 /// Converts tick into miliseconds since boot
 pub fn get_milis() -> u64 {
-    TICK.load(Ordering::SeqCst)
+    TICK.load(Ordering::SeqCst) / (TARGET_FREQ / 100)
 }

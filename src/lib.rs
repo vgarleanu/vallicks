@@ -95,7 +95,10 @@
     global_asm,
     get_mut_unchecked,
     type_alias_impl_trait,
-    prelude_import
+    prelude_import,
+    core_intrinsics,
+    optin_builtin_traits,
+    box_syntax
 )]
 #![deny(missing_docs)]
 extern crate alloc;

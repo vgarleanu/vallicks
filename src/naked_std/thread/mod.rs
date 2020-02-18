@@ -276,8 +276,8 @@ impl Builder {
     pub fn spawn<F, T>(self, f: F) -> JoinHandle<T>
     where
         F: FnOnce() -> T,
-        F: Send + Sync + 'static,
-        T: Send + Sync + 'static,
+        F: Send + 'static,
+        T: Send + 'static,
     {
         let handle: JoinHandle<T> = JoinHandle::new();
         let mut switch = handle.get_switch();
@@ -413,8 +413,8 @@ impl Builder {
 pub fn spawn<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T,
-    F: Send + Sync + 'static,
-    T: Send + Sync + 'static,
+    F: Send + 'static,
+    T: Send + 'static,
 {
     Builder::new().spawn(f)
 }
@@ -752,7 +752,7 @@ impl Thread {
     ) -> Result<Self, mapper::MapToError>
     where
         F: FnOnce() -> !,
-        F: Send + Sync + 'static,
+        F: Send + 'static,
     {
         let mut mapper = crate::globals::MAPPER.lock();
         let mut frame_allocator = crate::globals::FRAME_ALLOCATOR.lock();
