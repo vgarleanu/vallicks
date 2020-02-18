@@ -1,4 +1,7 @@
-use crate::{globals};
+//! This is our allocator module, that is used internally for two things.
+//! * Create the initial heap that will allow us to store things on the heap with ease.
+//! * Extend the heap when we exceed the assigned range
+use crate::globals;
 use x86_64::{
     structures::paging::{
         mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
@@ -36,6 +39,9 @@ fn assign_heap(
     Ok((unsafe { HEAP_LAST } - HEAP_SIZE, HEAP_SIZE))
 }
 
+/// Function extends the heap and returns a tuple with the start address of the new heap and the
+/// size of the new heap. If an error occured it returns the error message that later gets
+/// forwarded to a panic.
 pub fn extend_heap() -> Result<(usize, usize), &'static str> {
     let mut mlock = globals::MAPPER.lock();
     let mapper = mlock

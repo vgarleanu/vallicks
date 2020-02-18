@@ -1,3 +1,6 @@
+//! This module contains all the kernel memory related functions.
+//! This is the home to the Paging init functions and the frame allocator.
+#![allow(missing_docs)]
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::{

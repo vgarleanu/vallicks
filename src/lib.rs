@@ -97,6 +97,7 @@
     type_alias_impl_trait,
     prelude_import
 )]
+#![deny(missing_docs)]
 extern crate alloc;
 
 /// The arch module holds the lowlevel initation functions to prepare the CPU for the kernel.

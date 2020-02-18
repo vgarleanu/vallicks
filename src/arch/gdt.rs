@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::{segmentation, tables},

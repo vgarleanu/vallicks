@@ -1,6 +1,8 @@
+//! Module planned to be used for checking for specific features and enabling them
 use crate::prelude::*;
 use x86::cpuid::CpuId;
 
+/// Checks if the current CPU offers some features and prints to the console if that is the case
 pub fn cpu_info() {
     let cpuid = CpuId::new();
     let vendor = cpuid

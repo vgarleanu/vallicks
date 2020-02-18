@@ -12,6 +12,7 @@ lazy_static! {
         Mutex::new(Writer::new(ColorCode::new(Color::White, Color::Black)));
 }
 
+/// Macro prints something to the serial connection
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ({
@@ -19,6 +20,7 @@ macro_rules! print {
     });
 }
 
+/// Macro prints something to the serial connection with a newline
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));

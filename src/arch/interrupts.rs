@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::{
     arch::gdt,
     arch::memory::translate_addr,
@@ -16,6 +17,10 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
+/// Convinience macro for creating a generic interrupt handler. It will look up all the registered
+/// interrupt handlers for a specific interrupt thats being fired, and if it finds it will call
+/// that function. It will then notify the PIC of a EOI regardless of whether there was a handler
+/// present or not.
 macro_rules! make_int_handler {
     ($name:ident => $int:expr) => {
         extern "x86-interrupt" fn $name(_frame: &mut InterruptStackFrame) {
@@ -66,11 +71,19 @@ lazy_static! {
         idt
     };
 }
+
+/// Sets up the Interrupt Descriptor Table with all of our exception handles and generic interrupt
+/// handlers.
 pub fn init_idt() {
     IDT.load();
     println!("idt: Interrupt setup done...");
 }
 
+/// Allows some module to hook a interrupt by providing a function to be called to this function.
+/// It then inserts that function into the global interrupt table. When our generic handler gets
+/// called it looks up the interrupt ID in the table and calls the function.
+///
+/// This allows our modules to hotswap interrupt handlers when required.
 pub fn register_interrupt<T>(interrupt: i32, handler: T)
 where
     T: Fn() + Send + Sync + 'static,
@@ -83,6 +96,8 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFra
     println!("Exception: Breakpoint \n{:#?}", stack_frame);
 }
 
+// TODO: Forward page faults to offending threads, display a message and then halt and free the
+// thread.
 extern "x86-interrupt" fn page_fault_handler(
     stack_frame: &mut InterruptStackFrame,
     error_code: PageFaultErrorCode,

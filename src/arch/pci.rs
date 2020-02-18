@@ -1,3 +1,5 @@
+//! This is the PCI module that needs refactoring
+#![allow(missing_docs)]
 use crate::prelude::*;
 use x86_64::instructions::port::Port;
 
@@ -6,7 +8,7 @@ pub struct Pci {
     pub devices: Vec<Device>,
 }
 
-/// Struct represents a single pci device
+/// Struct represents a single PCI device
 #[derive(Debug, Clone)]
 pub struct Device {
     pub bus: u16,
