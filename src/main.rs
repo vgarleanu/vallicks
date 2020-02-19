@@ -4,29 +4,56 @@
 #![test_runner(vallicks::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use vallicks::naked_std::sync::mpsc;
-use vallicks::naked_std::thread;
+use naked_std::thread;
 use vallicks::prelude::*;
 
-#[cfg(test)]
-#[entrypoint]
-fn main() {
-    #[cfg(test)]
-    test_main();
+struct Test(pub u32);
+
+fn n10() {
+    let test = Test(123);
+    panic!();
+}
+fn n9() {
+    n10();
+}
+fn n8() {
+    n9();
+}
+fn n7() {
+    n8();
+}
+fn n6() {
+    n7();
+}
+fn n5() {
+    n6();
+}
+fn n4() {
+    n6();
 }
 
-fn main_t() {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        for i in 0..100 {
-            println!(
-                "{:?}",
-                tx.send(format!("This msg was sent over a channel {}", i))
-            );
-        }
+fn n3() {
+    n4();
+}
+
+fn n2() {
+    n3();
+}
+
+fn n1() {
+    n2();
+}
+
+fn n() {
+    n1();
+}
+
+#[entrypoint]
+fn main() {
+    let t = thread::spawn(move || {
+        n();
     });
 
-    for i in 0..100 {
-        println!("{:?}", rx.recv());
-    }
+    t.join();
+    println!("Ok");
 }

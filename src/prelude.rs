@@ -2,7 +2,9 @@
 pub use crate::{print, println, sprint, sprintln};
 
 #[cfg(test)]
-pub use crate::{uprint};
+pub use crate::uprint;
+
+pub use crate::schedule::scheduler::backtrack;
 
 pub use alloc::{boxed::Box, format, string::String, vec::Vec};
 
@@ -29,4 +31,5 @@ pub mod sync {
 
 pub use vallicks_macros::{compile_warning, main as entrypoint, unittest};
 
+pub use crate::naked_std;
 pub use alloc::vec;

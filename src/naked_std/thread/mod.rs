@@ -121,14 +121,12 @@ use crate::{
         memory::{alloc_stack, StackBounds},
         pit::get_milis,
     },
+    cell::UnsafeCell,
     prelude::*,
     schedule as scheduler,
     schedule::stack::Stack,
-    sync::Arc,
-};
-use core::{
-    cell::UnsafeCell,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::{atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc},
 };
 use x86_64::{structures::paging::mapper, VirtAddr};
 

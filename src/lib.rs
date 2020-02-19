@@ -81,31 +81,176 @@
 //! start writing userland code, without the need to manually set up the kernel. In addition to
 //! that, the entrypoint macro will make it easier for users to migrate from versions of the kernel
 //! where the API has changed in some way.
-#![no_std]
+//!
+//! # Using std::*
+//! To use the standard library provided with vallicks you must import the prelude, after which you
+//! can use the standard library as you would in normal std mode except by replacing `std` with
+//! `naked_std`. For example lets spin up a TcpServer:
+//! ```rust
+//! use vallicks::prelude::*; // import our prelude containing basic imports
+//! use naked_std::{
+//!     io::Write,
+//!     net::TcpListener,
+//!     thread,
+//! };
+//!
+//! fn main() {
+//!    let listener = TcpListener::bind("127.0.0.1:1234").unwrap();
+//!    println!("Server is listening");
+//!    for stream in listener.incoming() {
+//!        thread::spawn(|| {
+//!            let mut buf = [u8; 1024];
+//!            let mut stream = stream.unwrap();
+//!            let _ = stream.read(&mut buf).unwrap(); // read at most 1024 bytes into buffer
+//!            stream.write(&buf).unwrap(); // send em back
+//!        });
+//!    }
+//! }
+//! ```
+//!
+//! # Threading
+//! Within vallicks you can make full use of a equivalent thread api ported over from libstd,
+//! however it has a few caveats. Take this code for example:
+//! ```rust
+//! use vallicks::prelude::*;
+//! use naked_std::thread;
+//!
+//! struct Test(pub u32);
+//!
+//! impl Drop for Test {
+//!     fn drop(&mut self) {
+//!         println!("Dropped test");
+//!     }
+//! }
+//!
+//! fn main() {
+//!     let thread = thread::spawn(|| {
+//!         let test = Test(123);
+//!         panic!();
+//!     });
+//!
+//!     assert!(thread.join().is_err());
+//! }
+//! ```
+//! Under the stdlib threading API, when the thread panics the stack will be unwinded and all the
+//! resources held would be dropped. Under vallicks such a thing is not possible, the scheduler
+//! will print out a RBP based backtrace for the thread, and will mark the thread as panicking.
+//! Because of this, something like Mutexes that can get poisoned are impossible, therefore you
+//! should handle panicking threads with care.
+//!
+//! # Unit testing
+//! Unit testing is a bit more difficult than in the standard library. Because of the enviroment it
+//! is quite difficult to do unit testing, however it can still be done. To have unittests your
+//! `main.rs` should look something like this:
+//! ```rust
+//! #![feature(custom_test_frameworks)]
+//! #![test_runner(vallicks::test_runner)]
+//! #![reexport_test_harness_main = "test_main"]
+//!
+//! use vallicks::prelude::*;
+//!
+//! #[unittest]
+//! fn trivial_test() {
+//!     assert!(1 == 1);
+//! }
+//!
+//! #[entrypoint]
+//! fn main() {}
+//! ```
+//! You must mark all unittests with the `unittest` attribute macro, which will generate some
+//! bootstrap code to make testing less of a pain.
+#![no_std] // LOL who the fuck needs a standard library, amirite?
 #![cfg_attr(test, no_main)]
 #![cfg_attr(test, allow(unused_variables))]
 #![cfg_attr(test, allow(dead_code))]
 #![cfg_attr(test, allow(unused_imports))]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
+// All the features included in here are either needed for correct kernel operation or needed by
+// naked_std.
 #![feature(
     abi_x86_interrupt,
-    asm,
     alloc_error_handler,
-    custom_test_frameworks,
-    naked_functions,
-    option_expect_none,
-    raw,
-    try_trait,
-    never_type,
-    global_asm,
-    get_mut_unchecked,
-    type_alias_impl_trait,
-    prelude_import,
+    alloc_layout_extra,
+    allocator_api,
+    allocator_internals,
+    allow_internal_unsafe,
+    arbitrary_self_types,
+    array_error_internals,
+    asm,
+    associated_type_bounds,
+    atomic_mut_ptr,
+    box_syntax,
+    cfg_target_thread_local,
+    char_error_internals,
+    clamp,
+    concat_idents,
+    const_raw_ptr_deref,
+    container_error_extra,
     core_intrinsics,
+    custom_test_frameworks,
+    decl_macro,
+    doc_alias,
+    doc_cfg,
+    doc_keyword,
+    doc_masked,
+    doc_spotlight,
+    dropck_eyepatch,
+    duration_constants,
+    exact_size_is_empty,
+    exhaustive_patterns,
+    external_doc,
+    fn_traits,
+    format_args_nl,
+    generator_trait,
+    get_mut_unchecked,
+    global_asm,
+    hashmap_internals,
+    int_error_internals,
+    int_error_matching,
+    integer_atomics,
+    lang_items,
+    link_args,
+    linkage,
+    log_syntax,
+    maybe_uninit_ref,
+    maybe_uninit_slice,
+    naked_functions,
+    needs_panic_runtime,
+    never_type,
+    nll,
     optin_builtin_traits,
-    box_syntax
+    option_expect_none,
+    panic_info_message,
+    panic_internals,
+    prelude_import,
+    ptr_internals,
+    raw,
+    renamed_spin_loop,
+    rustc_attrs,
+    rustc_private,
+    shrink_to,
+    slice_concat_ext,
+    slice_internals,
+    specialization,
+    std_internals,
+    stdsimd,
+    stmt_expr_attributes,
+    str_internals,
+    test,
+    thread_local,
+    toowned_clone_into,
+    trace_macros,
+    track_caller,
+    try_reserve,
+    try_trait,
+    type_alias_impl_trait,
+    unboxed_closures,
+    untagged_unions,
+    unwind_attributes,
+    vec_into_raw_parts
 )]
+//    #![feature(staged_api)], // enable feature to allow for stability/unstability markers (TBE: 0.1.0)
 #![deny(missing_docs)]
 extern crate alloc;
 
@@ -127,6 +272,7 @@ pub mod prelude;
 /// This holds all the modules related to the scheduler.
 pub(crate) mod schedule;
 
+pub(crate) use crate::naked_std::*; // Re-export all of std for std (allows me to not fucking change all imports when copying libstd)
 #[allow(unused_imports)]
 use crate::{
     arch::{
@@ -135,7 +281,7 @@ use crate::{
         pit::get_milis,
     },
     driver::*,
-    prelude::*,
+    prelude::{compile_warning, format, halt},
     schedule::init_scheduler,
 };
 use bootloader::BootInfo;

@@ -1,5 +1,6 @@
 [build]
 target = "x86_64-barebone-none.json"
+rustflags = ["-Cdebuginfo=2", "-Cforce-frame-pointers=yes"]
 
 [target.'cfg(target_os = "none")']
 runner = "bootimage runner"

@@ -159,9 +159,40 @@ impl Scheduler {
         let id = self.current_thread_id();
         println!("scheduler::warn marking thread {} as dirty", id.as_u64());
 
+        backtrack();
+
         match self.threads.remove(&id) {
             Some(mut x) => x.set_panicking(panic_info),
             None => println!("scheduler: a thread that doesnt exist panic'd"),
         }
+    }
+}
+
+use crate::arch::memory::translate_addr;
+/// Function walks the base pointer, yielding a backtrace, however it may be incomplete.
+pub fn backtrack() {
+    println!("Backtrace:");
+    let mut base_pointer: *const usize;
+
+    // Get the address of pushed base pointer
+    unsafe { asm!("mov rax, rbp" : "={rax}"(base_pointer) ::: "intel") }
+
+    // Before entering boot_entry we set the base pointer to null (0)
+    // This way, we can determine when to stop walking the stack
+    // See the start64_2 function in boot_entry.asm
+    while !base_pointer.is_null() || base_pointer as usize > 0x10000 {
+        if unsafe { translate_addr(VirtAddr::from_ptr(base_pointer)) }.is_none() {
+            break;
+        }
+
+        // The return address is above the pushed base pointer
+        let return_address = unsafe { *(base_pointer.offset(1)) } as usize;
+
+        // If we haven't loaded the symbol table yet just
+        // print the raw return address
+        println!("    > {:#x}", return_address);
+
+        // The pushed base pointer is the address to the previous stack frame
+        base_pointer = unsafe { (*base_pointer) as *const usize };
     }
 }

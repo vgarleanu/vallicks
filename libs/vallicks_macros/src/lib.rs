@@ -33,13 +33,19 @@ pub fn main(_: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let result = quote! {
-        #[cfg(not(test))]
         bootloader::entry_point!(#name);
         #(#attrs)*
         fn #name(boot_info: &'static bootloader::BootInfo) -> ! {
             println!("Booting... Standby...");
             vallicks::init(boot_info);
             println!("Booted in {}ms", timer::get_milis());
+
+            // if we are in testing mode we run all the tests and halt
+            if cfg!(test) {
+                #[cfg(test)]
+                test_main();
+                halt();
+            }
 
             // We spawn the old main inside a closure as a separate thread
             let main_thread = thread::spawn(||{
