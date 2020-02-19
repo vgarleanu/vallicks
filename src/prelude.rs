@@ -1,6 +1,9 @@
 #[allow(unused_imports)]
 pub use crate::{print, println, sprint, sprintln};
 
+#[cfg(test)]
+pub use crate::{uprint};
+
 pub use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 // TODO: Make this exit thread based instead
@@ -24,6 +27,6 @@ pub mod sync {
     pub use spin::{Mutex, MutexGuard, RwLock};
 }
 
-pub use vallicks_macros::{compile_warning, main as entrypoint};
+pub use vallicks_macros::{compile_warning, main as entrypoint, unittest};
 
 pub use alloc::vec;

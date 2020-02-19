@@ -839,3 +839,168 @@ impl core::fmt::Debug for Thread {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Builder;
+    use crate::alloc::string::*;
+    use crate::naked_std::sync::mpsc::{channel, Sender};
+    use crate::naked_std::thread::{self, ThreadId};
+    use crate::prelude::*;
+    use core::any::Any;
+    use core::mem;
+    use core::result;
+    use core::u32;
+
+    // !!! These tests are dangerous. If something is buggy, they will hang, !!!
+    // !!! instead of exiting cleanly. This might wedge the buildbots.       !!!
+
+    /*
+    fn test_unnamed_thread() {
+        thread::spawn(move || {
+            assert!(thread::current().name().is_none());
+        })
+        .join()
+        .ok()
+        .expect("thread panicked");
+    }
+
+    fn test_named_thread() {
+        Builder::new()
+            .name("ada lovelace".to_string())
+            .spawn(move || {
+                assert!(thread::current().name().unwrap() == "ada lovelace".to_string());
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+    */
+
+    #[unittest]
+    fn test_run_basic() {
+        let (tx, rx) = channel();
+        thread::spawn(move || {
+            tx.send(()).unwrap();
+        });
+        rx.recv().unwrap();
+    }
+
+    #[unittest]
+    fn test_join_panic() {
+        match thread::spawn(move || panic!()).join() {
+            result::Result::Err(_) => (),
+            result::Result::Ok(()) => panic!(),
+        }
+    }
+
+    #[unittest]
+    fn test_spawn_sched() {
+        let (tx, rx) = channel();
+
+        fn f(i: i32, tx: Sender<()>) {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                if i == 0 {
+                    tx.send(()).unwrap();
+                } else {
+                    f(i - 1, tx);
+                }
+            });
+        }
+        f(10, tx);
+        rx.recv().unwrap();
+    }
+
+    #[unittest]
+    fn test_spawn_sched_childs_on_default_sched() {
+        let (tx, rx) = channel();
+
+        thread::spawn(move || {
+            thread::spawn(move || {
+                tx.send(()).unwrap();
+            });
+        });
+
+        rx.recv().unwrap();
+    }
+
+    fn avoid_copying_the_body<F>(spawnfn: F)
+    where
+        F: FnOnce(Box<dyn Fn() + Send>),
+    {
+        let (tx, rx) = channel();
+
+        let x: Box<_> = box 1;
+        let x_in_parent = (&*x) as *const i32 as usize;
+
+        spawnfn(Box::new(move || {
+            let x_in_child = (&*x) as *const i32 as usize;
+            tx.send(x_in_child).unwrap();
+        }));
+
+        let x_in_child = rx.recv().unwrap();
+        assert_eq!(x_in_parent, x_in_child);
+    }
+
+    #[unittest]
+    fn test_avoid_copying_the_body_spawn() {
+        avoid_copying_the_body(|v| {
+            thread::spawn(move || v());
+        });
+    }
+
+    #[unittest]
+    fn test_avoid_copying_the_body_thread_spawn() {
+        avoid_copying_the_body(|f| {
+            thread::spawn(move || {
+                f();
+            });
+        })
+    }
+
+    #[unittest]
+    fn test_avoid_copying_the_body_join() {
+        avoid_copying_the_body(|f| {
+            let _ = thread::spawn(move || f()).join();
+        })
+    }
+
+    #[unittest]
+    fn test_child_doesnt_ref_parent() {
+        // If the child refcounts the parent thread, this will stack overflow when
+        // climbing the thread tree to dereference each ancestor. (See #1789)
+        // (well, it would if the constant were 8000+ - I lowered it to be more
+        // valgrind-friendly. try this at home, instead..!)
+        const GENERATIONS: u32 = 16;
+        fn child_no(x: u32) -> Box<dyn Fn() + Send> {
+            return Box::new(move || {
+                if x < GENERATIONS {
+                    thread::spawn(move || child_no(x + 1)());
+                }
+            });
+        }
+        thread::spawn(|| child_no(0)());
+    }
+
+    #[unittest]
+    fn test_simple_newsched_spawn() {
+        thread::spawn(move || {});
+    }
+
+    #[unittest]
+    fn sleep_ms_smoke() {
+        thread::sleep(20);
+    }
+
+    #[unittest]
+    fn test_thread_id_equal() {
+        assert!(thread::current() == thread::current());
+    }
+
+    #[unittest]
+    fn test_thread_id_not_equal() {
+        let spawned_id = thread::spawn(|| thread::current()).join().unwrap();
+        assert!(thread::current() != spawned_id);
+    }
+}

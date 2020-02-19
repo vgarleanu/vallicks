@@ -240,14 +240,17 @@ impl<T, ProducerAddition, ConsumerAddition> Drop for Queue<T, ProducerAddition, 
     }
 }
 
-#[cfg(all(test, not(target_os = "emscripten")))]
+#[cfg(test)]
 mod tests {
     use super::Queue;
-    use crate::sync::mpsc::channel;
-    use crate::sync::Arc;
-    use crate::thread;
+    use crate::naked_std::sync::mpsc::channel;
+    use crate::naked_std::sync::Arc;
+    use crate::naked_std::thread;
+    use crate::prelude::vec;
+    use crate::prelude::*;
+    use alloc::boxed::Box;
 
-    #[test]
+    #[unittest]
     fn smoke() {
         unsafe {
             let queue = Queue::with_additions(0, (), ());
@@ -264,7 +267,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn peek() {
         unsafe {
             let queue = Queue::with_additions(0, (), ());
@@ -287,7 +290,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn drop_full() {
         unsafe {
             let q: Queue<Box<_>> = Queue::with_additions(0, (), ());
@@ -296,7 +299,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn smoke_bound() {
         unsafe {
             let q = Queue::with_additions(0, (), ());
@@ -313,7 +316,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn stress() {
         unsafe {
             stress_bound(0);

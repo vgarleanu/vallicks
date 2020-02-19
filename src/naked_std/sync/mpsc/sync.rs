@@ -1,4 +1,3 @@
-use self::Blocker::*;
 /// Synchronous channels/ports
 ///
 /// This channel implementation differs significantly from the asynchronous
@@ -23,7 +22,9 @@ use self::Blocker::*;
 /// implementation shares almost all code for the buffered and unbuffered cases
 /// of a synchronous channel. There are a few branches for the unbuffered case,
 /// but they're mostly just relevant to blocking senders.
+#[allow(dead_code)]
 pub use self::Failure::*;
+use self::Blocker::*;
 
 use core::intrinsics::abort;
 use core::isize;

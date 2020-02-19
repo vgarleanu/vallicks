@@ -1,5 +1,8 @@
 //! Useful synchronization primitives.
 //!
+//! naked_std implements several synchronization primitives that have been directly ported from
+//! rust's libstd.
+//!
 //! ## The need for synchronization
 //!
 //! Conceptually, a Rust program is a series of operations which will

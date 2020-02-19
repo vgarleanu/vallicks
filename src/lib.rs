@@ -83,10 +83,16 @@
 //! where the API has changed in some way.
 #![no_std]
 #![cfg_attr(test, no_main)]
+#![cfg_attr(test, allow(unused_variables))]
+#![cfg_attr(test, allow(dead_code))]
+#![cfg_attr(test, allow(unused_imports))]
+#![test_runner(crate::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 #![feature(
     abi_x86_interrupt,
     asm,
     alloc_error_handler,
+    custom_test_frameworks,
     naked_functions,
     option_expect_none,
     raw,
@@ -138,6 +144,12 @@ use x86_64::VirtAddr;
 
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("This library can only be used on the x86_64 architecture.");
+
+#[cfg(all(test, debug_assertions))]
+compile_warning!("Due to some performance issues awaiting to be debugged, not testing in release mode is unstable");
+
+#[cfg(debug_assertions)]
+compile_warning!("Due to some performance issues awaiting to be debugged, using channels not in release mode is unstable");
 
 /// Enum represents a qemu specific VM exit code which is used only in two cases. Within vallicks
 /// when running cargo xtest, which lets the test suite know if the test passed or not.
@@ -277,14 +289,53 @@ fn panic(info: &PanicInfo) -> ! {
     // If current_thread_id is 0 that means that the panic was before the main thread was launched
     // if that is the case we simply want to print and halt, otherwise we inform the scheduler to
     // mark the thread as dirty
-    if thread_id != 0 {
+    if thread_id > 1 {
         // We print and halt here not only for better panic message but to remove a race condition
         // where the dirty thread gets freed before we can print the panic info
+        #[cfg(test)]
+        uprint!("\nthread {} has panic'd with {}", thread_id, info);
+
         println!("thread {} has panic'd with {}", thread_id, info);
         schedule::mark_dirty(format!("{}", info));
         halt();
     }
 
+    #[cfg(test)]
+    uprint!("    ....FAILED!!!\n");
+    #[cfg(test)]
+    uprint!("{}\n", info);
+
+    #[cfg(not(test))]
     println!("{}", info);
+
+    #[cfg(test)]
+    exit(ExitCode::Failed);
+
     halt();
+}
+
+#[cfg(test)]
+use bootloader::entry_point;
+
+#[cfg(test)]
+entry_point!(test_kernel_main);
+
+/// This is our testing entry point
+#[cfg(test)]
+fn test_kernel_main(boot_info: &'static BootInfo) -> ! {
+    init(boot_info);
+    test_main();
+    hlt_loop();
+}
+
+/// This is our test runner
+pub fn test_runner(tests: &[&dyn Fn()]) {
+    #[cfg(test)]
+    uprint!("\nRunning {} tests\n", tests.len());
+    for test in tests {
+        test();
+    }
+    #[cfg(test)]
+    uprint!("\nDone testing: {}/{} OK\n", tests.len(), tests.len());
+    exit(ExitCode::Success);
 }

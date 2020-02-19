@@ -21,6 +21,7 @@
 /// consuming the port). This upgrade is then also stored in the shared packet.
 /// The one caveat to consider is that when a port sees a disconnected channel
 /// it must check for data because there is no "data plus upgrade" state.
+#[allow(dead_code)]
 pub use self::Failure::*;
 use self::MyUpgrade::*;
 pub use self::UpgradeResult::*;

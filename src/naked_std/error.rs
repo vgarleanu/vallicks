@@ -105,7 +105,9 @@ pub trait Error: Debug + Display {
     ///     eprintln!("Error: {}", e);
     /// }
     /// ```
-    fn description(&self) -> &str;
+    fn description(&self) -> &str {
+        "this method is deprecated, use Display instead"
+    }
 }
 
 mod private {
@@ -494,10 +496,11 @@ impl dyn Error + Send + Sync {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(test))]
 mod tests {
     use super::Error;
-    use crate::fmt;
+    use core::fmt;
+    use alloc::boxed::Box;
 
     #[derive(Debug, PartialEq)]
     struct A;
@@ -518,7 +521,7 @@ mod tests {
     impl Error for A {}
     impl Error for B {}
 
-    #[test]
+    #[test_case]
     fn downcasting() {
         let mut a = A;
         let a = &mut a as &mut (dyn Error + 'static);

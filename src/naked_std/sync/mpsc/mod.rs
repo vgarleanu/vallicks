@@ -25,12 +25,12 @@
 //!    that a bound of 0 is allowed, causing the channel to become a "rendezvous"
 //!    channel where each sender atomically hands off a message to a receiver.
 //!
-//! [`Sender`]: ../../../std/sync/mpsc/struct.Sender.html
-//! [`SyncSender`]: ../../../std/sync/mpsc/struct.SyncSender.html
-//! [`Receiver`]: ../../../std/sync/mpsc/struct.Receiver.html
-//! [`send`]: ../../../std/sync/mpsc/struct.Sender.html#method.send
-//! [`channel`]: ../../../std/sync/mpsc/fn.channel.html
-//! [`sync_channel`]: ../../../std/sync/mpsc/fn.sync_channel.html
+//! [`Sender`]: ../../../naked_std/sync/mpsc/struct.Sender.html
+//! [`SyncSender`]: ../../../naked_std/sync/mpsc/struct.SyncSender.html
+//! [`Receiver`]: ../../../naked_std/sync/mpsc/struct.Receiver.html
+//! [`send`]: ../../../naked_std/sync/mpsc/struct.Sender.html#method.send
+//! [`channel`]: ../../../naked_std/sync/mpsc/fn.channel.html
+//! [`sync_channel`]: ../../../naked_std/sync/mpsc/fn.sync_channel.html
 //!
 //! ## Disconnection
 //!
@@ -44,17 +44,17 @@
 //! will continue to [`unwrap`] the results returned from this module,
 //! instigating a propagation of failure among threads if one unexpectedly dies.
 //!
-//! [`Result`]: ../../../std/result/enum.Result.html
-//! [`Err`]: ../../../std/result/enum.Result.html#variant.Err
-//! [`unwrap`]: ../../../std/result/enum.Result.html#method.unwrap
+//! [`Result`]: ../../../naked_std/result/enum.Result.html
+//! [`Err`]: ../../../naked_std/result/enum.Result.html#variant.Err
+//! [`unwrap`]: ../../../naked_std/result/enum.Result.html#method.unwrap
 //!
 //! # Examples
 //!
 //! Simple usage:
 //!
 //! ```
-//! use std::thread;
-//! use std::sync::mpsc::channel;
+//! use vallicks::naked_std::thread;
+//! use vallicks::naked_std::sync::mpsc::channel;
 //!
 //! // Create a simple streaming channel
 //! let (tx, rx) = channel();
@@ -67,8 +67,8 @@
 //! Shared usage:
 //!
 //! ```
-//! use std::thread;
-//! use std::sync::mpsc::channel;
+//! use vallicks::naked_std::thread;
+//! use vallicks::naked_std::sync::mpsc::channel;
 //!
 //! // Create a shared channel that can be sent along from many threads
 //! // where tx is the sending half (tx for transmission), and rx is the receiving
@@ -90,7 +90,7 @@
 //! Propagating panics:
 //!
 //! ```
-//! use std::sync::mpsc::channel;
+//! use vallicks::naked_std::sync::mpsc::channel;
 //!
 //! // The call to recv() will return an error because the channel has already
 //! // hung up (or been deallocated)
@@ -102,8 +102,8 @@
 //! Synchronous channels:
 //!
 //! ```
-//! use std::thread;
-//! use std::sync::mpsc::sync_channel;
+//! use vallicks::naked_std::thread;
+//! use vallicks::naked_std::sync::mpsc::sync_channel;
 //!
 //! let (tx, rx) = sync_channel::<i32>(0);
 //! thread::spawn(move|| {
@@ -112,6 +112,8 @@
 //! });
 //! rx.recv().unwrap();
 //! ```
+
+#[allow(dead_code)]
 
 // A description of how Rust's channel implementation works
 //
@@ -264,7 +266,6 @@
 //
 // And now that you've seen all the races that I found and attempted to fix,
 // here's the code for you to find some more!
-
 use core::cell::UnsafeCell;
 // use core::error; // disabled for now
 use crate::naked_std::error;
@@ -294,9 +295,9 @@ mod cache_aligned;
 /// # Examples
 ///
 /// ```rust
-/// use std::sync::mpsc::channel;
-/// use std::thread;
-/// use std::time::Duration;
+/// use vallicks::naked_std::sync::mpsc::channel;
+/// use vallicks::naked_std::thread;
+/// use vallicks::naked_std::time::Duration;
 ///
 /// let (send, recv) = channel();
 ///
@@ -328,14 +329,14 @@ impl<T> !Sync for Receiver<T> {}
 ///
 /// [`iter`]: struct.Receiver.html#method.iter
 /// [`Receiver`]: struct.Receiver.html
-/// [`next`]: ../../../std/iter/trait.Iterator.html#tymethod.next
-/// [`None`]: ../../../std/option/enum.Option.html#variant.None
+/// [`next`]: ../../../naked_std/iter/trait.Iterator.html#tymethod.next
+/// [`None`]: ../../../naked_std/option/enum.Option.html#variant.None
 ///
 /// # Examples
 ///
 /// ```rust
-/// use std::sync::mpsc::channel;
-/// use std::thread;
+/// use vallicks::naked_std::sync::mpsc::channel;
+/// use vallicks::naked_std::thread;
 ///
 /// let (send, recv) = channel();
 ///
@@ -365,14 +366,14 @@ pub struct Iter<'a, T: 'a> {
 ///
 /// [`Receiver`]: struct.Receiver.html
 /// [`try_iter`]: struct.Receiver.html#method.try_iter
-/// [`None`]: ../../../std/option/enum.Option.html#variant.None
+/// [`None`]: ../../../naked_std/option/enum.Option.html#variant.None
 ///
 /// # Examples
 ///
 /// ```rust
-/// use std::sync::mpsc::channel;
-/// use std::thread;
-/// use std::time::Duration;
+/// use vallicks::naked_std::sync::mpsc::channel;
+/// use vallicks::naked_std::thread;
+/// use vallicks::naked_std::time::Duration;
 ///
 /// let (sender, receiver) = channel();
 ///
@@ -406,8 +407,8 @@ pub struct TryIter<'a, T: 'a> {
 /// returned if the corresponding channel has hung up.
 ///
 /// [`Receiver`]: struct.Receiver.html
-/// [`next`]: ../../../std/iter/trait.Iterator.html#tymethod.next
-/// [`None`]: ../../../std/option/enum.Option.html#variant.None
+/// [`next`]: ../../../naked_std/iter/trait.Iterator.html#tymethod.next
+/// [`None`]: ../../../naked_std/option/enum.Option.html#variant.None
 ///
 /// # Examples
 ///
@@ -443,8 +444,8 @@ pub struct IntoIter<T> {
 /// # Examples
 ///
 /// ```rust
-/// use std::sync::mpsc::channel;
-/// use std::thread;
+/// use vallicks::naked_std::sync::mpsc::channel;
+/// use vallicks::naked_std::thread;
 ///
 /// let (sender, receiver) = channel();
 /// let sender2 = sender.clone();
@@ -487,8 +488,8 @@ impl<T> !Sync for Sender<T> {}
 /// # Examples
 ///
 /// ```rust
-/// use std::sync::mpsc::sync_channel;
-/// use std::thread;
+/// use vallicks::naked_std::sync::mpsc::sync_channel;
+/// use vallicks::naked_std::thread;
 ///
 /// // Create a sync_channel with buffer size 2
 /// let (sync_sender, receiver) = sync_channel(2);
@@ -665,8 +666,8 @@ impl<T> UnsafeFlavor<T> for Receiver<T> {
 /// # Examples
 ///
 /// ```
-/// use std::sync::mpsc::channel;
-/// use std::thread;
+/// use vallicks::naked_std::sync::mpsc::channel;
+/// use vallicks::naked_std::thread;
 ///
 /// let (sender, receiver) = channel();
 ///
@@ -720,8 +721,8 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 /// # Examples
 ///
 /// ```
-/// use std::sync::mpsc::sync_channel;
-/// use std::thread;
+/// use vallicks::naked_std::sync::mpsc::sync_channel;
+/// use vallicks::naked_std::thread;
 ///
 /// let (sender, receiver) = sync_channel(1);
 ///
@@ -763,15 +764,15 @@ impl<T> Sender<T> {
     /// will be received. It is possible for the corresponding receiver to
     /// hang up immediately after this function returns [`Ok`].
     ///
-    /// [`Err`]: ../../../std/result/enum.Result.html#variant.Err
-    /// [`Ok`]: ../../../std/result/enum.Result.html#variant.Ok
+    /// [`Err`]: ../../../naked_std/result/enum.Result.html#variant.Err
+    /// [`Ok`]: ../../../naked_std/result/enum.Result.html#variant.Ok
     ///
     /// This method will never block the current thread.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::sync::mpsc::channel;
+    /// use vallicks::naked_std::sync::mpsc::channel;
     ///
     /// let (tx, rx) = channel();
     ///
@@ -906,14 +907,14 @@ impl<T> SyncSender<T> {
     /// [`Receiver`] has disconnected and is no longer able to receive
     /// information.
     ///
-    /// [`Err`]: ../../../std/result/enum.Result.html#variant.Err
-    /// [`Receiver`]: ../../../std/sync/mpsc/struct.Receiver.html
+    /// [`Err`]: ../../../naked_std/result/enum.Result.html#variant.Err
+    /// [`Receiver`]: ../../../naked_std/sync/mpsc/struct.Receiver.html
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use std::sync::mpsc::sync_channel;
-    /// use std::thread;
+    /// use vallicks::naked_std::sync::mpsc::sync_channel;
+    /// use vallicks::naked_std::thread;
     ///
     /// // Create a rendezvous sync_channel with buffer size 0
     /// let (sync_sender, receiver) = sync_channel(0);
@@ -943,13 +944,13 @@ impl<T> SyncSender<T> {
     /// See [`send`] for notes about guarantees of whether the
     /// receiver has received the data or not if this function is successful.
     ///
-    /// [`send`]: ../../../std/sync/mpsc/struct.SyncSender.html#method.send
+    /// [`send`]: ../../../naked_std/sync/mpsc/struct.SyncSender.html#method.send
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use std::sync::mpsc::sync_channel;
-    /// use std::thread;
+    /// use vallicks::naked_std::sync::mpsc::sync_channel;
+    /// use vallicks::naked_std::thread;
     ///
     /// // Create a sync_channel with buffer size 1
     /// let (sync_sender, receiver) = sync_channel(1);
@@ -1034,7 +1035,7 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use std::sync::mpsc::{Receiver, channel};
+    /// use vallicks::naked_std::sync::mpsc::{Receiver, channel};
     ///
     /// let (_, receiver): (_, Receiver<i32>) = channel();
     ///
@@ -1088,13 +1089,13 @@ impl<T> Receiver<T> {
     ///
     /// [`Sender`]: struct.Sender.html
     /// [`SyncSender`]: struct.SyncSender.html
-    /// [`Err`]: ../../../std/result/enum.Result.html#variant.Err
+    /// [`Err`]: ../../../naked_std/result/enum.Result.html#variant.Err
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::sync::mpsc;
-    /// use std::thread;
+    /// use vallicks::naked_std::sync::mpsc;
+    /// use vallicks::naked_std::thread;
     ///
     /// let (send, recv) = mpsc::channel();
     /// let handle = thread::spawn(move || {
@@ -1109,9 +1110,9 @@ impl<T> Receiver<T> {
     /// Buffering behavior:
     ///
     /// ```
-    /// use std::sync::mpsc;
-    /// use std::thread;
-    /// use std::sync::mpsc::RecvError;
+    /// use vallicks::naked_std::sync::mpsc;
+    /// use vallicks::naked_std::thread;
+    /// use vallicks::naked_std::sync::mpsc::RecvError;
     ///
     /// let (send, recv) = mpsc::channel();
     /// let handle = thread::spawn(move || {
@@ -1160,14 +1161,14 @@ impl<T> Receiver<T> {
     /// Returns an iterator that will block waiting for messages, but never
     /// [`panic!`]. It will return [`None`] when the channel has hung up.
     ///
-    /// [`panic!`]: ../../../std/macro.panic.html
-    /// [`None`]: ../../../std/option/enum.Option.html#variant.None
+    /// [`panic!`]: ../../../naked_std/macro.panic.html
+    /// [`None`]: ../../../naked_std/option/enum.Option.html#variant.None
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use std::sync::mpsc::channel;
-    /// use std::thread;
+    /// use vallicks::naked_std::sync::mpsc::channel;
+    /// use vallicks::naked_std::thread;
     ///
     /// let (send, recv) = channel();
     ///
@@ -1192,14 +1193,14 @@ impl<T> Receiver<T> {
     /// channel has hung up. The iterator will never [`panic!`] or block the
     /// user by waiting for values.
     ///
-    /// [`panic!`]: ../../../std/macro.panic.html
+    /// [`panic!`]: ../../../naked_std/macro.panic.html
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use std::sync::mpsc::channel;
-    /// use std::thread;
-    /// use std::time::Duration;
+    /// use vallicks::naked_std::sync::mpsc::channel;
+    /// use vallicks::naked_std::thread;
+    /// use vallicks::naked_std::time::Duration;
     ///
     /// let (sender, receiver) = channel();
     ///
@@ -1410,34 +1411,26 @@ impl From<RecvError> for RecvTimeoutError {
     }
 }
 
-#[cfg(all(test, not(target_os = "emscripten")))]
-mod tests {
+mod unittests {
     use super::*;
-    use crate::env;
-    use crate::thread;
-    use crate::time::{Duration, Instant};
+    use crate::naked_std::thread;
+    use crate::prelude::*;
+    use alloc::boxed::Box;
 
-    pub fn stress_factor() -> usize {
-        match env::var("RUST_TEST_STRESS") {
-            Ok(val) => val.parse().unwrap(),
-            Err(..) => 1,
-        }
-    }
-
-    #[test]
+    #[unittest]
     fn smoke() {
         let (tx, rx) = channel::<i32>();
         tx.send(1).unwrap();
         assert_eq!(rx.recv().unwrap(), 1);
     }
 
-    #[test]
+    #[unittest]
     fn drop_full() {
         let (tx, _rx) = channel::<Box<isize>>();
         tx.send(box 1).unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn drop_full_shared() {
         let (tx, _rx) = channel::<Box<isize>>();
         drop(tx.clone());
@@ -1445,7 +1438,7 @@ mod tests {
         tx.send(box 1).unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn smoke_shared() {
         let (tx, rx) = channel::<i32>();
         tx.send(1).unwrap();
@@ -1455,7 +1448,7 @@ mod tests {
         assert_eq!(rx.recv().unwrap(), 1);
     }
 
-    #[test]
+    #[unittest]
     fn smoke_threads() {
         let (tx, rx) = channel::<i32>();
         let _t = thread::spawn(move || {
@@ -1464,21 +1457,21 @@ mod tests {
         assert_eq!(rx.recv().unwrap(), 1);
     }
 
-    #[test]
+    #[unittest]
     fn smoke_port_gone() {
         let (tx, rx) = channel::<i32>();
         drop(rx);
         assert!(tx.send(1).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn smoke_shared_port_gone() {
         let (tx, rx) = channel::<i32>();
         drop(rx);
         assert!(tx.send(1).is_err())
     }
 
-    #[test]
+    #[unittest]
     fn smoke_shared_port_gone2() {
         let (tx, rx) = channel::<i32>();
         drop(rx);
@@ -1487,7 +1480,7 @@ mod tests {
         assert!(tx2.send(1).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn port_gone_concurrent() {
         let (tx, rx) = channel::<i32>();
         let _t = thread::spawn(move || {
@@ -1496,7 +1489,7 @@ mod tests {
         while tx.send(1).is_ok() {}
     }
 
-    #[test]
+    #[unittest]
     fn port_gone_concurrent_shared() {
         let (tx, rx) = channel::<i32>();
         let tx2 = tx.clone();
@@ -1506,14 +1499,14 @@ mod tests {
         while tx.send(1).is_ok() && tx2.send(1).is_ok() {}
     }
 
-    #[test]
+    #[unittest]
     fn smoke_chan_gone() {
         let (tx, rx) = channel::<i32>();
         drop(tx);
         assert!(rx.recv().is_err());
     }
 
-    #[test]
+    #[unittest]
     fn smoke_chan_gone_shared() {
         let (tx, rx) = channel::<()>();
         let tx2 = tx.clone();
@@ -1522,7 +1515,7 @@ mod tests {
         assert!(rx.recv().is_err());
     }
 
-    #[test]
+    #[unittest]
     fn chan_gone_concurrent() {
         let (tx, rx) = channel::<i32>();
         let _t = thread::spawn(move || {
@@ -1532,7 +1525,7 @@ mod tests {
         while rx.recv().is_ok() {}
     }
 
-    #[test]
+    #[unittest]
     fn stress() {
         let (tx, rx) = channel::<i32>();
         let t = thread::spawn(move || {
@@ -1546,9 +1539,10 @@ mod tests {
         t.join().ok().expect("thread panicked");
     }
 
-    #[test]
+    #[unittest]
     fn stress_shared() {
-        const AMT: u32 = 10000;
+        println!("stress_shared");
+        const AMT: u32 = 100;
         const NTHREADS: u32 = 8;
         let (tx, rx) = channel::<i32>();
 
@@ -1574,7 +1568,7 @@ mod tests {
         t.join().ok().expect("thread panicked");
     }
 
-    #[test]
+    #[unittest]
     fn send_from_outside_runtime() {
         let (tx1, rx1) = channel::<()>();
         let (tx2, rx2) = channel::<i32>();
@@ -1594,7 +1588,7 @@ mod tests {
         t2.join().ok().expect("thread panicked");
     }
 
-    #[test]
+    #[unittest]
     fn recv_from_outside_runtime() {
         let (tx, rx) = channel::<i32>();
         let t = thread::spawn(move || {
@@ -1608,7 +1602,7 @@ mod tests {
         t.join().ok().expect("thread panicked");
     }
 
-    #[test]
+    #[unittest]
     fn no_runtime() {
         let (tx1, rx1) = channel::<i32>();
         let (tx2, rx2) = channel::<i32>();
@@ -1624,21 +1618,21 @@ mod tests {
         t2.join().ok().expect("thread panicked");
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_close_port_first() {
         // Simple test of closing without sending
         let (_tx, rx) = channel::<i32>();
         drop(rx);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_close_chan_first() {
         // Simple test of closing without sending
         let (tx, _rx) = channel::<i32>();
         drop(tx);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_send_port_close() {
         // Testing that the sender cleans up the payload if receiver is closed
         let (tx, rx) = channel::<Box<i32>>();
@@ -1646,7 +1640,7 @@ mod tests {
         assert!(tx.send(box 0).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_recv_chan_close() {
         // Receiving on a closed chan will panic
         let res = thread::spawn(move || {
@@ -1659,42 +1653,54 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_send_then_recv() {
         let (tx, rx) = channel::<Box<i32>>();
         tx.send(box 10).unwrap();
         assert!(*rx.recv().unwrap() == 10);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_send_open() {
         let (tx, rx) = channel::<i32>();
         assert!(tx.send(10).is_ok());
         assert!(rx.recv().unwrap() == 10);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_send_closed() {
         let (tx, rx) = channel::<i32>();
         drop(rx);
         assert!(tx.send(10).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_recv_open() {
         let (tx, rx) = channel::<i32>();
         tx.send(10).unwrap();
         assert!(rx.recv() == Ok(10));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_recv_closed() {
         let (tx, rx) = channel::<i32>();
         drop(tx);
         assert!(rx.recv().is_err());
     }
+}
 
-    #[test]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::naked_std::thread;
+    use crate::prelude::*;
+    use alloc::boxed::Box;
+
+    pub fn stress_factor() -> usize {
+        1
+    }
+
+    #[unittest]
     fn oneshot_single_thread_peek_data() {
         let (tx, rx) = channel::<i32>();
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
@@ -1702,7 +1708,7 @@ mod tests {
         assert_eq!(rx.try_recv(), Ok(10));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_peek_close() {
         let (tx, rx) = channel::<i32>();
         drop(tx);
@@ -1710,13 +1716,13 @@ mod tests {
         assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_peek_open() {
         let (_tx, rx) = channel::<i32>();
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_task_recv_then_send() {
         let (tx, rx) = channel::<Box<i32>>();
         let _t = thread::spawn(move || {
@@ -1726,7 +1732,7 @@ mod tests {
         tx.send(box 10).unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_task_recv_then_close() {
         let (tx, rx) = channel::<Box<i32>>();
         let _t = thread::spawn(move || {
@@ -1739,7 +1745,7 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_close_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = channel::<i32>();
@@ -1750,7 +1756,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_send_close_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = channel::<i32>();
@@ -1764,7 +1770,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_recv_close_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = channel::<i32>();
@@ -1783,7 +1789,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_send_recv_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = channel::<Box<isize>>();
@@ -1794,10 +1800,10 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn stream_send_recv_stress() {
         for _ in 0..stress_factor() {
-            let (tx, rx) = channel();
+            let (tx, rx) = channel::<Box<i32>>();
 
             send(tx, 0);
             recv(rx, 0);
@@ -1826,8 +1832,9 @@ mod tests {
         }
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    /*
+    #[unittest]
+    #[ignore]
     fn oneshot_single_thread_recv_timeout() {
         let (tx, rx) = channel();
         tx.send(()).unwrap();
@@ -1840,8 +1847,8 @@ mod tests {
         assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    #[unittest]
+    #[ignore]
     fn stress_recv_timeout_two_threads() {
         let (tx, rx) = channel();
         let stress = stress_factor() + 100;
@@ -1871,8 +1878,8 @@ mod tests {
         assert_eq!(recv_count, stress);
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    #[unittest]
+    #[ignore]
     fn recv_timeout_upgrade() {
         let (tx, rx) = channel::<()>();
         let timeout = Duration::from_millis(1);
@@ -1883,8 +1890,8 @@ mod tests {
         assert!(Instant::now() >= start + timeout);
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    #[unittest]
+    #[ignore]
     fn stress_recv_timeout_shared() {
         let (tx, rx) = channel();
         let stress = stress_factor() + 100;
@@ -1914,8 +1921,8 @@ mod tests {
         assert_eq!(recv_count, stress);
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    #[unittest]
+    #[ignore] // FIXME: Implement duration
     fn very_long_recv_timeout_wont_panic() {
         let (tx, rx) = channel::<()>();
         let join_handle =
@@ -1924,8 +1931,9 @@ mod tests {
         assert!(tx.send(()).is_ok());
         assert_eq!(join_handle.join().unwrap(), Ok(()));
     }
+    */
 
-    #[test]
+    #[unittest]
     fn recv_a_lot() {
         // Regression test that we don't run out of stack in scheduler context
         let (tx, rx) = channel();
@@ -1937,8 +1945,9 @@ mod tests {
         }
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    /*
+    #[unittest]
+    #[ignore] // FIXME: Implement duration
     fn shared_recv_timeout() {
         let (tx, rx) = channel();
         let total = 5;
@@ -1960,8 +1969,9 @@ mod tests {
         tx.send(()).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
     }
+    */
 
-    #[test]
+    #[unittest]
     fn shared_chan_stress() {
         let (tx, rx) = channel();
         let total = stress_factor() + 100;
@@ -1977,7 +1987,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn test_nested_recv_iter() {
         let (tx, rx) = channel::<i32>();
         let (total_tx, total_rx) = channel::<i32>();
@@ -1997,7 +2007,7 @@ mod tests {
         assert_eq!(total_rx.recv().unwrap(), 6);
     }
 
-    #[test]
+    #[unittest]
     fn test_recv_iter_break() {
         let (tx, rx) = channel::<i32>();
         let (count_tx, count_rx) = channel();
@@ -2022,7 +2032,7 @@ mod tests {
         assert_eq!(count_rx.recv().unwrap(), 4);
     }
 
-    #[test]
+    #[unittest]
     fn test_recv_try_iter() {
         let (request_tx, request_rx) = channel();
         let (response_tx, response_rx) = channel();
@@ -2050,7 +2060,7 @@ mod tests {
         assert_eq!(t.join().unwrap(), 6);
     }
 
-    #[test]
+    #[unittest]
     fn test_recv_into_iter_owned() {
         let mut iter = {
             let (tx, rx) = channel::<i32>();
@@ -2064,7 +2074,7 @@ mod tests {
         assert_eq!(iter.next().is_none(), true);
     }
 
-    #[test]
+    #[unittest]
     fn test_recv_into_iter_borrowed() {
         let (tx, rx) = channel::<i32>();
         tx.send(1).unwrap();
@@ -2076,7 +2086,7 @@ mod tests {
         assert_eq!(iter.next().is_none(), true);
     }
 
-    #[test]
+    #[unittest]
     fn try_recv_states() {
         let (tx1, rx1) = channel::<i32>();
         let (tx2, rx2) = channel::<()>();
@@ -2102,7 +2112,7 @@ mod tests {
 
     // This bug used to end up in a livelock inside of the Receiver destructor
     // because the internal state of the Shared packet was corrupted
-    #[test]
+    #[unittest]
     fn destroy_upgraded_shared_port_when_sender_still_active() {
         let (tx, rx) = channel();
         let (tx2, rx2) = channel();
@@ -2125,7 +2135,7 @@ mod tests {
         rx2.recv().unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn issue_32114() {
         let (tx, _) = channel();
         let _ = tx.send(123);
@@ -2133,34 +2143,31 @@ mod tests {
     }
 }
 
-#[cfg(all(test, not(target_os = "emscripten")))]
+#[cfg(test)]
 mod sync_tests {
     use super::*;
-    use crate::env;
-    use crate::thread;
-    use crate::time::Duration;
+    use crate::naked_std::thread;
+    use crate::prelude::*;
+    use alloc::boxed::Box;
 
     pub fn stress_factor() -> usize {
-        match env::var("RUST_TEST_STRESS") {
-            Ok(val) => val.parse().unwrap(),
-            Err(..) => 1,
-        }
+        1
     }
 
-    #[test]
+    #[unittest]
     fn smoke() {
         let (tx, rx) = sync_channel::<i32>(1);
         tx.send(1).unwrap();
         assert_eq!(rx.recv().unwrap(), 1);
     }
 
-    #[test]
+    #[unittest]
     fn drop_full() {
         let (tx, _rx) = sync_channel::<Box<isize>>(1);
         tx.send(box 1).unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn smoke_shared() {
         let (tx, rx) = sync_channel::<i32>(1);
         tx.send(1).unwrap();
@@ -2170,8 +2177,9 @@ mod sync_tests {
         assert_eq!(rx.recv().unwrap(), 1);
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    /*
+    #[unittest]
+    #[ignore] // FIXME: Ignore test cases with timeouts as Duration isnt implemented yet
     fn recv_timeout() {
         let (tx, rx) = sync_channel::<i32>(1);
         assert_eq!(
@@ -2181,8 +2189,9 @@ mod sync_tests {
         tx.send(1).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(1));
     }
+    */
 
-    #[test]
+    #[unittest]
     fn smoke_threads() {
         let (tx, rx) = sync_channel::<i32>(0);
         let _t = thread::spawn(move || {
@@ -2191,14 +2200,14 @@ mod sync_tests {
         assert_eq!(rx.recv().unwrap(), 1);
     }
 
-    #[test]
+    #[unittest]
     fn smoke_port_gone() {
         let (tx, rx) = sync_channel::<i32>(0);
         drop(rx);
         assert!(tx.send(1).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn smoke_shared_port_gone2() {
         let (tx, rx) = sync_channel::<i32>(0);
         drop(rx);
@@ -2207,7 +2216,7 @@ mod sync_tests {
         assert!(tx2.send(1).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn port_gone_concurrent() {
         let (tx, rx) = sync_channel::<i32>(0);
         let _t = thread::spawn(move || {
@@ -2216,7 +2225,7 @@ mod sync_tests {
         while tx.send(1).is_ok() {}
     }
 
-    #[test]
+    #[unittest]
     fn port_gone_concurrent_shared() {
         let (tx, rx) = sync_channel::<i32>(0);
         let tx2 = tx.clone();
@@ -2226,14 +2235,14 @@ mod sync_tests {
         while tx.send(1).is_ok() && tx2.send(1).is_ok() {}
     }
 
-    #[test]
+    #[unittest]
     fn smoke_chan_gone() {
         let (tx, rx) = sync_channel::<i32>(0);
         drop(tx);
         assert!(rx.recv().is_err());
     }
 
-    #[test]
+    #[unittest]
     fn smoke_chan_gone_shared() {
         let (tx, rx) = sync_channel::<()>(0);
         let tx2 = tx.clone();
@@ -2242,7 +2251,7 @@ mod sync_tests {
         assert!(rx.recv().is_err());
     }
 
-    #[test]
+    #[unittest]
     fn chan_gone_concurrent() {
         let (tx, rx) = sync_channel::<i32>(0);
         thread::spawn(move || {
@@ -2252,7 +2261,7 @@ mod sync_tests {
         while rx.recv().is_ok() {}
     }
 
-    #[test]
+    #[unittest]
     fn stress() {
         let (tx, rx) = sync_channel::<i32>(0);
         thread::spawn(move || {
@@ -2265,8 +2274,9 @@ mod sync_tests {
         }
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    /*
+    #[unittest]
+    #[ignore] // FIXME: Ignore test cases involving recv_timeout as they are not implemented yet
     fn stress_recv_timeout_two_threads() {
         let (tx, rx) = sync_channel::<i32>(0);
 
@@ -2291,8 +2301,8 @@ mod sync_tests {
         assert_eq!(recv_count, 10000);
     }
 
-    #[test]
-    #[cfg_attr(target_env = "sgx", ignore)] // FIXME: https://github.com/fortanix/rust-sgx/issues/31
+    #[unittest]
+    #[ignore] // FIXME: Ignore test cases involving recv_timeout as they are not implemented yet
     fn stress_recv_timeout_shared() {
         const AMT: u32 = 1000;
         const NTHREADS: u32 = 8;
@@ -2331,8 +2341,9 @@ mod sync_tests {
 
         drx.recv().unwrap();
     }
+    */
 
-    #[test]
+    #[unittest]
     fn stress_shared() {
         const AMT: u32 = 1000;
         const NTHREADS: u32 = 8;
@@ -2362,21 +2373,21 @@ mod sync_tests {
         drx.recv().unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_close_port_first() {
         // Simple test of closing without sending
         let (_tx, rx) = sync_channel::<i32>(0);
         drop(rx);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_close_chan_first() {
         // Simple test of closing without sending
         let (tx, _rx) = sync_channel::<i32>(0);
         drop(tx);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_send_port_close() {
         // Testing that the sender cleans up the payload if receiver is closed
         let (tx, rx) = sync_channel::<Box<i32>>(0);
@@ -2384,7 +2395,7 @@ mod sync_tests {
         assert!(tx.send(box 0).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_recv_chan_close() {
         // Receiving on a closed chan will panic
         let res = thread::spawn(move || {
@@ -2397,48 +2408,48 @@ mod sync_tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_send_then_recv() {
         let (tx, rx) = sync_channel::<Box<i32>>(1);
         tx.send(box 10).unwrap();
         assert!(*rx.recv().unwrap() == 10);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_send_open() {
         let (tx, rx) = sync_channel::<i32>(1);
         assert_eq!(tx.try_send(10), Ok(()));
         assert!(rx.recv().unwrap() == 10);
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_send_closed() {
         let (tx, rx) = sync_channel::<i32>(0);
         drop(rx);
         assert_eq!(tx.try_send(10), Err(TrySendError::Disconnected(10)));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_send_closed2() {
         let (tx, _rx) = sync_channel::<i32>(0);
         assert_eq!(tx.try_send(10), Err(TrySendError::Full(10)));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_recv_open() {
         let (tx, rx) = sync_channel::<i32>(1);
         tx.send(10).unwrap();
         assert!(rx.recv() == Ok(10));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_recv_closed() {
         let (tx, rx) = sync_channel::<i32>(0);
         drop(tx);
         assert!(rx.recv().is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_try_recv_closed_with_data() {
         let (tx, rx) = sync_channel::<i32>(1);
         tx.send(10).unwrap();
@@ -2447,7 +2458,7 @@ mod sync_tests {
         assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_peek_data() {
         let (tx, rx) = sync_channel::<i32>(1);
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
@@ -2455,7 +2466,7 @@ mod sync_tests {
         assert_eq!(rx.try_recv(), Ok(10));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_peek_close() {
         let (tx, rx) = sync_channel::<i32>(0);
         drop(tx);
@@ -2463,13 +2474,13 @@ mod sync_tests {
         assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_single_thread_peek_open() {
         let (_tx, rx) = sync_channel::<i32>(0);
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_task_recv_then_send() {
         let (tx, rx) = sync_channel::<Box<i32>>(0);
         let _t = thread::spawn(move || {
@@ -2479,7 +2490,7 @@ mod sync_tests {
         tx.send(box 10).unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_task_recv_then_close() {
         let (tx, rx) = sync_channel::<Box<i32>>(0);
         let _t = thread::spawn(move || {
@@ -2492,7 +2503,7 @@ mod sync_tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_close_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = sync_channel::<i32>(0);
@@ -2503,7 +2514,7 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_send_close_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = sync_channel::<i32>(0);
@@ -2517,7 +2528,7 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_recv_close_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = sync_channel::<i32>(0);
@@ -2536,7 +2547,7 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn oneshot_multi_thread_send_recv_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = sync_channel::<Box<i32>>(0);
@@ -2547,7 +2558,7 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn stream_send_recv_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = sync_channel::<Box<i32>>(0);
@@ -2579,7 +2590,9 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    // FIXME: The stressing unit tests might occasionally hang, this is a performance bug being
+    //        investigated.
+    #[unittest]
     fn recv_a_lot() {
         // Regression test that we don't run out of stack in scheduler context
         let (tx, rx) = sync_channel(10000);
@@ -2591,7 +2604,7 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn shared_chan_stress() {
         let (tx, rx) = sync_channel(0);
         let total = stress_factor() + 100;
@@ -2607,7 +2620,7 @@ mod sync_tests {
         }
     }
 
-    #[test]
+    #[unittest]
     fn test_nested_recv_iter() {
         let (tx, rx) = sync_channel::<i32>(0);
         let (total_tx, total_rx) = sync_channel::<i32>(0);
@@ -2627,7 +2640,7 @@ mod sync_tests {
         assert_eq!(total_rx.recv().unwrap(), 6);
     }
 
-    #[test]
+    #[unittest]
     fn test_recv_iter_break() {
         let (tx, rx) = sync_channel::<i32>(0);
         let (count_tx, count_rx) = sync_channel(0);
@@ -2652,7 +2665,7 @@ mod sync_tests {
         assert_eq!(count_rx.recv().unwrap(), 4);
     }
 
-    #[test]
+    #[unittest]
     fn try_recv_states() {
         let (tx1, rx1) = sync_channel::<i32>(1);
         let (tx2, rx2) = sync_channel::<()>(1);
@@ -2678,7 +2691,7 @@ mod sync_tests {
 
     // This bug used to end up in a livelock inside of the Receiver destructor
     // because the internal state of the Shared packet was corrupted
-    #[test]
+    #[unittest]
     fn destroy_upgraded_shared_port_when_sender_still_active() {
         let (tx, rx) = sync_channel::<()>(0);
         let (tx2, rx2) = sync_channel::<()>(0);
@@ -2701,7 +2714,7 @@ mod sync_tests {
         rx2.recv().unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn send1() {
         let (tx, rx) = sync_channel::<i32>(0);
         let _t = thread::spawn(move || {
@@ -2710,7 +2723,7 @@ mod sync_tests {
         assert_eq!(tx.send(1), Ok(()));
     }
 
-    #[test]
+    #[unittest]
     fn send2() {
         let (tx, rx) = sync_channel::<i32>(0);
         let _t = thread::spawn(move || {
@@ -2719,7 +2732,7 @@ mod sync_tests {
         assert!(tx.send(1).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn send3() {
         let (tx, rx) = sync_channel::<i32>(1);
         assert_eq!(tx.send(1), Ok(()));
@@ -2729,7 +2742,7 @@ mod sync_tests {
         assert!(tx.send(1).is_err());
     }
 
-    #[test]
+    #[unittest]
     fn send4() {
         let (tx, rx) = sync_channel::<i32>(0);
         let tx2 = tx.clone();
@@ -2748,20 +2761,20 @@ mod sync_tests {
         donerx.recv().unwrap();
     }
 
-    #[test]
+    #[unittest]
     fn try_send1() {
         let (tx, _rx) = sync_channel::<i32>(0);
         assert_eq!(tx.try_send(1), Err(TrySendError::Full(1)));
     }
 
-    #[test]
+    #[unittest]
     fn try_send2() {
         let (tx, _rx) = sync_channel::<i32>(1);
         assert_eq!(tx.try_send(1), Ok(()));
         assert_eq!(tx.try_send(1), Err(TrySendError::Full(1)));
     }
 
-    #[test]
+    #[unittest]
     fn try_send3() {
         let (tx, rx) = sync_channel::<i32>(1);
         assert_eq!(tx.try_send(1), Ok(()));
@@ -2769,7 +2782,7 @@ mod sync_tests {
         assert_eq!(tx.try_send(1), Err(TrySendError::Disconnected(1)));
     }
 
-    #[test]
+    #[unittest]
     fn issue_15761() {
         fn repro() {
             let (tx1, rx1) = sync_channel::<()>(3);

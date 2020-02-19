@@ -13,6 +13,7 @@ lazy_static! {
 }
 
 /// Macro prints something to the serial connection
+#[cfg(not(test))]
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ({
@@ -20,12 +21,44 @@ macro_rules! print {
     });
 }
 
+/// Macro placeholder used during testing
+#[cfg(test)]
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {{}};
+}
+
+/// Macro used during testing
+#[cfg(test)]
+#[macro_export]
+macro_rules! uprint {
+    ($($arg:tt)*) => ({
+        $crate::driver::serial::_print(format_args!($($arg)*));
+    });
+}
+
 /// Macro prints something to the serial connection with a newline
+#[cfg(not(test))]
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
+
+/// Placeholder macro used during testing
+#[cfg(test)]
+#[macro_export]
+macro_rules! println {
+    () => {
+        $crate::driver::vga::blank();
+    };
+    ($($arg:tt)*) => {
+        $crate::driver::vga::blank();
+    };
+}
+
+#[cfg(test)]
+pub fn blank() {}
 
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
