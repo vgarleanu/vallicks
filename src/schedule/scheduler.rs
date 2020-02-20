@@ -1,6 +1,6 @@
 use crate::{
     prelude::*,
-    schedule::thread::{Thread, ThreadId},
+    schedule::thread::{ThreadState as Thread, ThreadId},
 };
 use alloc::collections::{BTreeMap, VecDeque};
 use core::mem;

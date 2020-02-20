@@ -96,6 +96,7 @@ pub fn unittest(_: TokenStream, item: TokenStream) -> TokenStream {
         #(#attrs)*
         #[test_case]
         fn #name() {
+            use crate::uprint;
             uprint!(#as_text);
             #body
             uprint!("   [OK]\n");

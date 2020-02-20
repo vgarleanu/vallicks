@@ -16,9 +16,15 @@ const TARGET_FREQ: u64 = 10000; // Hz
 /// Represents the value we send to the PIT to set up the desired frequency
 const RELOAD_VALUE: u64 = 1193182 / TARGET_FREQ;
 
+#[cfg(debug_assertions)]
+const TICK_DIVIDER: u64 = 1;
+
+#[cfg(not(debug_assertions))]
+const TICK_DIVIDER: u64 = 10;
+
 lazy_static::lazy_static! {
     /// This is the ticks we have so far since the PIT has been set up
-    static ref TICK: AtomicU64 = AtomicU64::new(1);
+    static ref TICK: AtomicU64 = AtomicU64::new(0);
 }
 
 /// Function sets the PIT up with the desired frequency.
@@ -37,9 +43,6 @@ pub fn init() {
 /// Function is called when a timer interrupt occurs and increments the inner count of tick so far
 pub fn tick() {
     TICK.fetch_add(1, Ordering::SeqCst);
-    if TICK.load(Ordering::SeqCst) % 1000 == 0 {
-        get_secs();
-    }
 }
 
 /// Converts the ticks into seconds since boot
@@ -49,5 +52,5 @@ pub fn get_secs() -> u64 {
 
 /// Converts tick into miliseconds since boot
 pub fn get_milis() -> u64 {
-    TICK.load(Ordering::SeqCst) / (TARGET_FREQ / 100)
+    TICK.load(Ordering::SeqCst) / TICK_DIVIDER
 }

@@ -125,8 +125,10 @@ use crate::{
     prelude::*,
     schedule as scheduler,
     schedule::stack::Stack,
-    sync::{atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        Arc,
+    },
 };
 use x86_64::{structures::paging::mapper, VirtAddr};
 
@@ -282,7 +284,7 @@ impl Builder {
         let panic_state = handle.get_panic();
         let inner = handle.get_inner();
 
-        let thread = Thread::new(
+        let thread = ThreadState::new(
             move || {
                 unsafe {
                     *inner.0.get() = Some(f());
@@ -507,6 +509,27 @@ pub fn sleep(ms: u64) {
     scheduler::park_current(ms);
 }
 
+/// Puts the current thread to sleep for at least the specified amount of time in miliseconds
+///
+/// The thread may sleep longer than the duration specified due to scheduling
+/// specifics. It will never sleep less.
+///
+/// # Examples
+///
+/// ```no_run
+/// use vallicks::arch::pit::get_milis;
+/// use naked_std::thread;
+///
+/// let now = get_milis();
+///
+/// thread::sleep(10);
+///
+/// assert!(get_milis() >= now);
+/// ```
+pub fn sleep_ms(ms: u64) {
+    scheduler::park_current(ms);
+}
+
 /// A unique identifier for a running thread.
 ///
 /// A `ThreadId` is an opaque object that has a unique value for each thread
@@ -707,6 +730,7 @@ impl<T> JoinHandle<T> {
     }
 }
 
+/// TODO: Fix docs
 /// This struct is the basic building block for a thread, it holds key information to be used by
 /// the scheduler to execute our functions.
 ///
@@ -723,7 +747,7 @@ impl<T> JoinHandle<T> {
 /// [`thread::spawn`]: fn.spawn.html
 /// [`thread::Builder::spawn`]: struct.Builder.html#method.spawn
 /// [`thread::Thread::new`]: struct.Thread.html#method.new
-pub struct Thread {
+pub struct ThreadState {
     /// The ID of the thread about to be spawned
     id: ThreadId,
     /// This field is used by the scheduler to understand wether the thread is suposed to be still
@@ -739,7 +763,7 @@ pub struct Thread {
     switch: Arc<Switch>,
 }
 
-impl Thread {
+impl ThreadState {
     /// This method creates a new thread object and begins setting up and preparing the stack for
     /// execution.
     fn new<F>(
@@ -828,7 +852,7 @@ impl Thread {
     }
 }
 
-impl core::fmt::Debug for Thread {
+impl core::fmt::Debug for ThreadState {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(
             f,
@@ -837,6 +861,189 @@ impl core::fmt::Debug for Thread {
         )
     }
 }
+
+/* UNCOMMENT ONCE Mutex and Condvar are implemented
+/// The internal representation of a `Thread` handle
+struct Inner {
+    name: Option<String>,
+    id: ThreadId,
+    // state for thread park/unpark
+    state: AtomicUsize,
+    lock: Mutex<()>,
+    cvar: Condvar,
+}
+
+#[derive(Clone)]
+/// A handle to a thread.
+///
+/// Threads are represented via the `Thread` type, which you can get in one of
+/// two ways:
+///
+/// * By spawning a new thread, e.g., using the [`thread::spawn`][`spawn`]
+///   function, and calling [`thread`][`JoinHandle::thread`] on the
+///   [`JoinHandle`].
+/// * By requesting the current thread, using the [`thread::current`] function.
+///
+/// The [`thread::current`] function is available even for threads not spawned
+/// by the APIs of this module.
+///
+/// There is usually no need to create a `Thread` struct yourself, one
+/// should instead use a function like `spawn` to create new threads, see the
+/// docs of [`Builder`] and [`spawn`] for more details.
+///
+/// [`Builder`]: ../../std/thread/struct.Builder.html
+/// [`JoinHandle::thread`]: ../../std/thread/struct.JoinHandle.html#method.thread
+/// [`JoinHandle`]: ../../std/thread/struct.JoinHandle.html
+/// [`thread::current`]: ../../std/thread/fn.current.html
+/// [`spawn`]: ../../std/thread/fn.spawn.html
+pub struct Thread {
+    inner: Arc<Inner>,
+}
+
+impl Thread {
+    // Used only internally to construct a thread object without spawning
+    // Panics if the name contains nuls.
+    pub(crate) fn new(name: Option<String>, id: ThreadId) -> Thread {
+        Thread {
+            inner: Arc::new(Inner {
+                name,
+                state: AtomicUsize::new(EMPTY),
+                lock: Mutex::new(()),
+                cvar: Condvar::new(),
+            }),
+        }
+    }
+
+    /// Atomically makes the handle's token available if it is not already.
+    ///
+    /// Every thread is equipped with some basic low-level blocking support, via
+    /// the [`park`][park] function and the `unpark()` method. These can be
+    /// used as a more CPU-efficient implementation of a spinlock.
+    ///
+    /// See the [park documentation][park] for more details.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    ///
+    /// let parked_thread = thread::Builder::new()
+    ///     .spawn(|| {
+    ///         println!("Parking thread");
+    ///         thread::park();
+    ///         println!("Thread unparked");
+    ///     })
+    ///     .unwrap();
+    ///
+    /// // Let some time pass for the thread to be spawned.
+    /// thread::sleep(Duration::from_millis(10));
+    ///
+    /// println!("Unpark the thread");
+    /// parked_thread.thread().unpark();
+    ///
+    /// parked_thread.join().unwrap();
+    /// ```
+    ///
+    /// [park]: fn.park.html
+    pub fn unpark(&self) {
+        // To ensure the unparked thread will observe any writes we made
+        // before this call, we must perform a release operation that `park`
+        // can synchronize with. To do that we must write `NOTIFIED` even if
+        // `state` is already `NOTIFIED`. That is why this must be a swap
+        // rather than a compare-and-swap that returns if it reads `NOTIFIED`
+        // on failure.
+        match self.inner.state.swap(NOTIFIED, SeqCst) {
+            EMPTY => return,    // no one was waiting
+            NOTIFIED => return, // already unparked
+            PARKED => {}        // gotta go wake someone up
+            _ => panic!("inconsistent state in unpark"),
+        }
+
+        // There is a period between when the parked thread sets `state` to
+        // `PARKED` (or last checked `state` in the case of a spurious wake
+        // up) and when it actually waits on `cvar`. If we were to notify
+        // during this period it would be ignored and then when the parked
+        // thread went to sleep it would never wake up. Fortunately, it has
+        // `lock` locked at this stage so we can acquire `lock` to wait until
+        // it is ready to receive the notification.
+        //
+        // Releasing `lock` before the call to `notify_one` means that when the
+        // parked thread wakes it doesn't get woken only to have to wait for us
+        // to release `lock`.
+        drop(self.inner.lock.lock().unwrap());
+        self.inner.cvar.notify_one()
+    }
+
+    /// Gets the thread's unique identifier.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    ///
+    /// let other_thread = thread::spawn(|| {
+    ///     thread::current().id()
+    /// });
+    ///
+    /// let other_thread_id = other_thread.join().unwrap();
+    /// assert!(thread::current().id() != other_thread_id);
+    /// ```
+    pub fn id(&self) -> ThreadId {
+        self.inner.id
+    }
+
+    /// Gets the thread's name.
+    ///
+    /// For more information about named threads, see
+    /// [this module-level documentation][naming-threads].
+    ///
+    /// # Examples
+    ///
+    /// Threads by default have no name specified:
+    ///
+    /// ```
+    /// use std::thread;
+    ///
+    /// let builder = thread::Builder::new();
+    ///
+    /// let handler = builder.spawn(|| {
+    ///     assert!(thread::current().name().is_none());
+    /// }).unwrap();
+    ///
+    /// handler.join().unwrap();
+    /// ```
+    ///
+    /// Thread with a specified name:
+    ///
+    /// ```
+    /// use std::thread;
+    ///
+    /// let builder = thread::Builder::new()
+    ///     .name("foo".into());
+    ///
+    /// let handler = builder.spawn(|| {
+    ///     assert_eq!(thread::current().name(), Some("foo"))
+    /// }).unwrap();
+    ///
+    /// handler.join().unwrap();
+    /// ```
+    ///
+    /// [naming-threads]: ./index.html#naming-threads
+    pub fn name(&self) -> Option<&str> {
+        self.cname().map(|x| x.as_str())
+    }
+}
+
+impl fmt::Debug for Thread {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Thread")
+            .field("id", &self.id())
+            .field("name", &self.name())
+            .finish()
+    }
+}
+*/
 
 #[cfg(test)]
 mod tests {

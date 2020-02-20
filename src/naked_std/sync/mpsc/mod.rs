@@ -53,8 +53,9 @@
 //! Simple usage:
 //!
 //! ```
-//! use vallicks::naked_std::thread;
-//! use vallicks::naked_std::sync::mpsc::channel;
+//! use vallicks::prelude::*;
+//! use naked_std::thread;
+//! use naked_std::sync::mpsc::channel;
 //!
 //! // Create a simple streaming channel
 //! let (tx, rx) = channel();
@@ -114,7 +115,6 @@
 //! ```
 
 #[allow(dead_code)]
-
 // A description of how Rust's channel implementation works
 //
 // Channels are supposed to be the basic building block for all other
@@ -268,7 +268,7 @@
 // here's the code for you to find some more!
 use core::cell::UnsafeCell;
 // use core::error; // disabled for now
-use crate::naked_std::error;
+use crate::error;
 use alloc::sync::Arc;
 use core::fmt;
 use core::mem;
@@ -1411,7 +1411,8 @@ impl From<RecvError> for RecvTimeoutError {
     }
 }
 
-mod unittests {
+#[cfg(test)]
+mod tests {
     use super::*;
     use crate::naked_std::thread;
     use crate::prelude::*;
@@ -1690,10 +1691,10 @@ mod unittests {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests_2 {
     use super::*;
-    use crate::naked_std::thread;
-    use crate::prelude::*;
+    use crate::prelude::unittest;
+    use crate::thread;
     use alloc::boxed::Box;
 
     pub fn stress_factor() -> usize {

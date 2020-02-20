@@ -6,9 +6,10 @@ edition = "2018"
 
 [package.metadata.bootimage]
 run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}", "-s", "-vga", "std",
-                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-device",
-                "rtl8139,netdev=u1,mac=12:34:56:78:90:ab", "-netdev", "tap,id=u1,ifname=tap0,script=no,downscript=no", "-object", "filter-dump,id=f1,netdev=u1,file=dump.dat"]
-test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-serial", "stdio", "-display", "none"] 
+               "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-device",
+               "rtl8139,netdev=u1,mac=12:34:56:78:90:ab", "-netdev", "tap,id=u1,ifname=tap0,script=no,downscript=no",
+               "-object", "filter-dump,id=f1,netdev=u1,file=dump.dat", "-nographic"]
+test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"] 
 test-success-exit-code = 33
 test-timeout = 300
 

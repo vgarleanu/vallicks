@@ -5,7 +5,7 @@ pub use crate::naked_std::thread;
 
 use crate::{globals::SCHEDULER, prelude::*, schedule::scheduler::Scheduler};
 use switch::context_switch_to;
-use thread::{Thread, ThreadId};
+use thread::{ThreadState as Thread, ThreadId};
 
 /// Method creates a new scheduler instance and sets it to the global named `SCHEDULER`. This
 /// method should only be ever called once.
@@ -103,10 +103,13 @@ pub fn yield_now() {
 /// # Arguments
 /// * `milis` - Miliseconds to sleep for
 pub fn park_current(milis: u64) {
+    {
+        let mut slock = SCHEDULER.lock();
+        slock.as_mut().unwrap().park_current(milis);
+    }
     loop {
         let next = {
             let mut slock = SCHEDULER.lock();
-            slock.as_mut().unwrap().park_current(milis);
             slock.as_mut().unwrap().schedule()
         };
 

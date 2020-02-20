@@ -11,6 +11,7 @@ struct Test(pub u32);
 
 fn n10() {
     let test = Test(123);
+    thread::sleep(1000);
     panic!();
 }
 fn n9() {
