@@ -1,4 +1,5 @@
 use core::convert::{AsRef, From, TryInto};
+use core::hash::{Hash, Hasher};
 
 /// Represents a MAC address
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
@@ -35,5 +36,11 @@ impl core::fmt::Display for Mac {
             "{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
             m[0], m[1], m[2], m[3], m[4], m[5]
         )
+    }
+}
+
+impl Hash for Mac {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
     }
 }

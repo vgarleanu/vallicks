@@ -5,7 +5,10 @@
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139D_DataSheet.pdf
 use crate::{
     arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device},
-    net::frames::{eth2::Ether2Frame, mac::Mac},
+    net::{
+        frames::{eth2::Ether2Frame, mac::Mac},
+        StreamSplit,
+    },
     prelude::sync::{Arc, RwLock},
     prelude::*,
 };
@@ -217,26 +220,6 @@ impl RTL8139 {
         }
     }
 
-    pub fn mac(&self) -> Mac {
-        self.mac.clone()
-    }
-
-    pub fn try_read(&mut self) -> Option<Ether2Frame> {
-        if FRAMES
-            .try_get()
-            .expect("rtl8139: frame queue uninit")
-            .is_empty()
-        {
-            return None;
-        }
-
-        FRAMES.try_get().expect("rtl8139: frame queue uninit").pop()
-    }
-
-    pub fn split(&mut self) -> (RxSink, TxSink) {
-        (RxSink::new(), TxSink::new())
-    }
-
     extern "x86-interrupt" fn handle_int(_: &mut InterruptStackFrame) {
         let mut inner = RTL8139_STATE.try_get().unwrap().write();
         let isr = unsafe { inner.ack.read() };
@@ -279,6 +262,19 @@ impl RTL8139 {
     }
 }
 
+impl StreamSplit for RTL8139 {
+    type RxSink = RxSink;
+    type TxSink = TxSink;
+
+    fn split(&mut self) -> (Self::RxSink, Self::TxSink) {
+        (RxSink::new(), TxSink::new())
+    }
+
+    fn mac(&self) -> Mac {
+        self.mac.clone()
+    }
+}
+
 pub struct RxSink {
     _private: (),
 }
@@ -309,12 +305,12 @@ impl Stream for RxSink {
     }
 }
 
-pub struct TxSink<'a> {
-    buffer: Vec<&'a [u8]>,
+pub struct TxSink {
+    buffer: Vec<Vec<u8>>,
     netdev: Device,
 }
 
-impl<'a> TxSink<'a> {
+impl TxSink {
     fn new() -> Self {
         Self {
             buffer: Vec::new(),
@@ -323,14 +319,14 @@ impl<'a> TxSink<'a> {
     }
 }
 
-impl<'a> Sink<&'a [u8]> for TxSink<'a> {
+impl Sink<Vec<u8>> for TxSink {
     type Error = ();
 
     fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: &'a [u8]) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
         self.buffer.push(item);
         Ok(())
     }
@@ -349,7 +345,7 @@ impl<'a> Sink<&'a [u8]> for TxSink<'a> {
             };
 
             for item in self.buffer.drain(..) {
-                unsafe { lock.write(item) };
+                unsafe { lock.write(&item) };
             }
         }
         self.netdev.set_enable_int();

@@ -11,7 +11,10 @@ use vallicks::arch::pit::get_milis;
 use vallicks::async_::*;
 use vallicks::driver::rtl8139;
 use vallicks::net::wire::eth2::Ether2Frame;
+use vallicks::net::wire::ipaddr::Ipv4Addr;
 use vallicks::net::wire::mac::Mac;
+use vallicks::net::NetworkDevice;
+use vallicks::net::StreamSplit;
 use vallicks::prelude::*;
 
 use core::convert::{From, Into};
@@ -26,22 +29,9 @@ fn main() {
 
 async fn send_packets() {
     let mut device = get_rtl8139_driver();
-    let (_, mut tx) = device.split();
-
-    let test_packet: Vec<u8> = Ether2Frame::new(
-        Mac::from([0x21, 0x43, 0x65, 0x87, 0x09, 0xba]),
-        Mac::from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
-        0x1,
-        vec![12, 23, 44, 5],
-    )
-    .into();
-
-    println!("got here");
-    let result = tx.send(&test_packet).await;
-    println!("send: {:?}", result);
-
-    let result = tx.flush().await;
-    println!("flush: {:?}", result);
+    let mut eth0 = NetworkDevice::new(&mut device);
+    eth0.set_ip(Ipv4Addr::new(192, 168, 100, 51));
+    eth0.process().await;
 }
 
 fn get_rtl8139_driver() -> rtl8139::RTL8139 {

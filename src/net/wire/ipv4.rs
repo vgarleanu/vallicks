@@ -5,6 +5,28 @@ use core::convert::From;
 use core::convert::Into;
 use core::convert::TryFrom;
 use core::convert::TryInto;
+use core::mem::transmute;
+
+#[derive(Clone, Copy, Debug)]
+#[repr(u8)]
+pub enum Ipv4Proto {
+    ICMP = 0x01,
+    TCP = 0x06,
+    UDP = 0x11,
+    Unknown,
+}
+
+impl Ipv4Proto {
+    pub fn raw(self) -> u8 {
+        unsafe { transmute::<Ipv4Proto, u8>(self) }
+    }
+}
+
+impl From<u8> for Ipv4Proto {
+    fn from(i: u8) -> Self {
+        unsafe { transmute::<u8, Ipv4Proto>(i) }
+    }
+}
 
 /// The bare structure of Ipv4 packets
 /// TODO: Use enums where possible
@@ -30,7 +52,7 @@ pub struct Ipv4 {
     /// Time to live for the packet
     ttl: u8,
     /// Protocol ID
-    proto: u8,
+    proto: Ipv4Proto,
     /// Packet checksum
     checksum: u16,
     /// Send IP
@@ -43,19 +65,80 @@ pub struct Ipv4 {
 }
 
 impl Ipv4 {
+    pub fn new_v4() -> Self {
+        Self {
+            version: 4,
+            hdr_len: 5,
+            dscp: 0x00,
+            ecn: 0,
+            len: 0,
+            id: 0,
+            flags: 0x40,
+            offset: 0,
+            ttl: 64,
+            proto: Ipv4Proto::ICMP,
+            checksum: 0,
+            sip: Ipv4Addr::new(127, 0, 0, 1),
+            dip: Ipv4Addr::new(127, 0, 0, 1),
+            data: Vec::new(),
+        }
+    }
+
+    pub fn set_data(mut self, data: Vec<u8>) -> Self {
+        self.data = data;
+        self
+    }
+
+    pub fn set_proto(mut self, proto: Ipv4Proto) -> Self {
+        self.proto = proto;
+        self
+    }
+
+    pub fn set_sip(mut self, sip: Ipv4Addr) -> Self {
+        self.sip = sip;
+        self
+    }
+
+    pub fn set_dip(mut self, dip: Ipv4Addr) -> Self {
+        self.dip = dip;
+        self
+    }
+
+    pub fn set_len(mut self) -> Self {
+        self.len = 20 + self.data.len() as u16;
+        self
+    }
+
+    pub fn set_id(mut self, id: u16) -> Self {
+        self.id = id;
+        self
+    }
+
     /// Method retruns the length of the packet.
     pub fn len(&self) -> u16 {
         self.len
     }
 
     /// Method returns the protocol id for this packet.
-    pub fn proto(&self) -> u8 {
+    pub fn proto(&self) -> Ipv4Proto {
         self.proto
     }
 
     /// Method returns the data extracted after the packet
     pub fn data(&self) -> Vec<u8> {
         self.data.clone()
+    }
+
+    pub fn dip(&self) -> Ipv4Addr {
+        self.dip
+    }
+
+    pub fn sip(&self) -> Ipv4Addr {
+        self.sip
+    }
+
+    pub fn id(&self) -> u16 {
+        self.id
     }
 }
 
@@ -81,7 +164,7 @@ impl TryFrom<&[u8]> for Ipv4 {
             flags: data[6] >> 5,
             offset: u16::from_be_bytes([data[6] & 0x1f, data[7]]),
             ttl: data[8],
-            proto: data[9],
+            proto: data[9].into(),
 
             checksum: u16::from_be_bytes([data[10], data[11]]),
 
@@ -106,18 +189,21 @@ impl Into<Vec<u8>> for Ipv4 {
         let hdr: &[u8] = &[];
 
         let ver_dscp = &[
-            (self.version << 4) | (self.hdr_len / 4),
+            (self.version << 4) | self.hdr_len,
             (self.dscp << 2) | self.ecn,
-        ];
+        ][..];
 
-        let len = &self.len.to_be_bytes();
-        let id = &self.id.to_be_bytes();
-        let flags = &(((self.flags as u16) << 8) | self.offset).to_be_bytes();
-        let ttl_proto = &[self.ttl, self.proto][..];
-        let checksum = &self.checksum.to_be_bytes();
-        let sip = &self.sip.as_ref();
-        let dip = &self.dip.as_ref();
+        let len = &self.len.to_be_bytes()[..];
+        let id = &self.id.to_be_bytes()[..];
+        let flags = &(((self.flags as u16) << 8) | self.offset).to_be_bytes()[..];
+        let ttl_proto = &[self.ttl, self.proto.raw()][..];
+        let checksum = &self.checksum.to_be_bytes()[..];
+        let sip = &self.sip.as_ref()[..];
+        let dip = &self.dip.as_ref()[..];
 
-        [ver_dscp, len, id, flags, ttl_proto, checksum, sip, dip].join(hdr)
+        [
+            ver_dscp, len, id, flags, ttl_proto, checksum, sip, dip, &self.data,
+        ]
+        .join(hdr)
     }
 }
