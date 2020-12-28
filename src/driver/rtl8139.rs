@@ -10,17 +10,18 @@ use crate::{
     prelude::*,
 };
 use conquer_once::spin::OnceCell;
+
 use core::convert::TryInto;
+use crossbeam_queue::SegQueue;
+
 use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use crossbeam_queue::SegQueue;
+use futures_util::sink::Sink;
 use futures_util::stream::Stream;
 use futures_util::task::AtomicWaker;
-use smoltcp::phy::{self, DeviceCapabilities};
-use smoltcp::time::Instant;
-use smoltcp::Result;
+
 use x86_64::instructions::port::Port;
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::VirtAddr;
@@ -278,7 +279,17 @@ impl RTL8139 {
     }
 }
 
-impl Stream for RTL8139 {
+pub struct RxSink {
+    _private: (),
+}
+
+impl RxSink {
+    fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
+impl Stream for RxSink {
     type Item = Ether2Frame;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
@@ -298,23 +309,56 @@ impl Stream for RTL8139 {
     }
 }
 
-pub struct RxSink {
-    _private: (),
+pub struct TxSink<'a> {
+    buffer: Vec<&'a [u8]>,
+    netdev: Device,
 }
 
-impl RxSink {
+impl<'a> TxSink<'a> {
     fn new() -> Self {
-        Self { _private: () }
+        Self {
+            buffer: Vec::new(),
+            netdev: RTL8139_STATE.try_get().unwrap().read().device.clone(),
+        }
     }
 }
 
-pub struct TxSink {
-    _private: (),
-}
+impl<'a> Sink<&'a [u8]> for TxSink<'a> {
+    type Error = ();
 
-impl TxSink {
-    fn new() -> Self {
-        Self { _private: () }
+    fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: &'a [u8]) -> Result<(), Self::Error> {
+        self.buffer.push(item);
+        Ok(())
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.netdev.set_disable_int();
+        {
+            let mut lock = if let Some(x) = RTL8139_STATE
+                .try_get()
+                .expect("rtl8139: state not init")
+                .try_write()
+            {
+                x
+            } else {
+                return Poll::Pending;
+            };
+
+            for item in self.buffer.drain(..) {
+                unsafe { lock.write(item) };
+            }
+        }
+        self.netdev.set_enable_int();
+
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.poll_flush(cx)
     }
 }
 
@@ -366,31 +410,29 @@ impl Rtl8139State {
         frame
     }
 
-    pub fn write(&mut self, data: &[u8]) {
+    /// # Safety
+    /// The caller must make sure that interrupts are disabled before calling and are re-enabled
+    /// after calling or the program will deadlock.
+    pub unsafe fn write(&mut self, data: &[u8]) {
         // NOTE: Are we sure we absolutely need to disable interrupts? maybe we can bypass this
         //       with DMA.
         // We clone the inner PCI device to avoid a deadlock when we re-enable PCI interrupts for
         // this device
 
         // Disable interrupts for this PCI device to avoid deadlock to do with inner
-        self.device.set_disable_int();
-        {
-            let cursor = self.tx_cursor;
-            let ptr = VirtAddr::from_ptr(data.as_ptr());
-            let physical = unsafe { translate_addr(ptr).unwrap() }.as_u64() as u32;
+        let cursor = self.tx_cursor;
+        let ptr = VirtAddr::from_ptr(data.as_ptr());
+        let physical = translate_addr(ptr).unwrap().as_u64() as u32;
 
-            unsafe {
-                self.tx_dat[cursor].write(physical);
-                self.tx_cmd[cursor].write((data.len() as u32) & 0xfff);
+        self.tx_dat[cursor].write(physical);
+        self.tx_cmd[cursor].write((data.len() as u32) & 0xfff);
 
-                loop {
-                    if (self.tx_cmd[cursor].read() & 0x8000) != 0 {
-                        break;
-                    }
-                }
+        loop {
+            if (self.tx_cmd[cursor].read() & 0x8000) != 0 {
+                break;
             }
-            self.tx_cursor = (cursor + 1) % 4;
         }
-        self.device.set_enable_int();
+
+        self.tx_cursor = (cursor + 1) % 4;
     }
 }

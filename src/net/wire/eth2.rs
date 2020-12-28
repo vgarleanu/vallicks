@@ -18,7 +18,7 @@ pub struct Ether2Frame {
 
 impl Ether2Frame {
     /// Creates a new bare Eth2 frame from the given parameters
-    /// 
+    ///
     /// # Arguments
     /// * `dst` - The destination for this packet
     /// * `src` - The source for this packet
