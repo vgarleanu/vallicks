@@ -76,6 +76,25 @@ impl Pci {
             );
         }
     }
+
+    pub fn find(
+        &self,
+        class_id: u16,
+        subclass_id: u16,
+        vendor_id: u16,
+        device_id: u16,
+    ) -> Option<Device> {
+        for device in self.devices.iter() {
+            if device.class_id == class_id
+                && device.subclass_id == subclass_id
+                && device.vendor_id == vendor_id
+                && device.device_id == device_id
+            {
+                return Some(device.clone());
+            }
+        }
+        None
+    }
 }
 
 impl Device {

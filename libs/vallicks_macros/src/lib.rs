@@ -48,9 +48,7 @@ pub fn main(_: TokenStream, item: TokenStream) -> TokenStream {
             }
 
             // We spawn the old main inside a closure as a separate thread
-            let main_thread = thread::spawn(||{
-                #body
-            });
+            #body
 
             // We attempt to join this thread, if the thread panics we send a ErrorCode downstream
             // to qemu

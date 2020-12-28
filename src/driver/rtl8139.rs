@@ -9,8 +9,20 @@ use crate::{
     prelude::sync::{Arc, RwLock},
     prelude::*,
 };
+use conquer_once::spin::OnceCell;
 use core::convert::TryInto;
+use core::{
+    pin::Pin,
+    task::{Context, Poll},
+};
+use crossbeam_queue::SegQueue;
+use futures_util::stream::Stream;
+use futures_util::task::AtomicWaker;
+use smoltcp::phy::{self, DeviceCapabilities};
+use smoltcp::time::Instant;
+use smoltcp::Result;
 use x86_64::instructions::port::Port;
+use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::VirtAddr;
 
 // Here we define all the RX Buffer lengths that we are gonna use
@@ -46,9 +58,13 @@ const RDU: u16 = 0b10000;
 const TDU: u16 = 0b1000_0000;
 const SYS_ERR: u16 = 0b1000_0000_0000_0000;
 
+static FRAMES: OnceCell<SegQueue<Ether2Frame>> = OnceCell::uninit();
+static RTL8139_STATE: OnceCell<Arc<RwLock<Rtl8139State>>> = OnceCell::uninit();
+static WAKER: AtomicWaker = AtomicWaker::new();
+
 /// This is our inner struct that holds all of our ports that we will use to talk with the nic, as
 /// well as our rx and tx buffers.
-struct RTL8139Inner {
+struct Rtl8139State {
     pub device: Device,
     pub config_1: Port<u32>,
     pub cmd_reg: Port<u8>,
@@ -69,19 +85,16 @@ struct RTL8139Inner {
 
     pub buffer: [u8; RX_BUF_LEN_WRAPPED],
     pub rx_cursor: usize,
-
-    pub frames: Vec<Ether2Frame>,
 }
 
 pub struct RTL8139 {
-    inner: Arc<RwLock<RTL8139Inner>>,
     mac: Mac,
 }
 
 impl RTL8139 {
     pub fn new(device: Device) -> Self {
         let base = device.port_base.unwrap() as u16;
-        let inner = RTL8139Inner {
+        let inner = Rtl8139State {
             device,
             config_1: Port::new(base + 0x52),
             cmd_reg: Port::new(base + 0x37),
@@ -118,18 +131,18 @@ impl RTL8139 {
 
             buffer: [0u8; RX_BUF_LEN_WRAPPED],
             rx_cursor: 0,
-
-            frames: Vec::new(),
         };
 
+        FRAMES.init_once(|| SegQueue::new());
+        RTL8139_STATE.init_once(move || Arc::new(RwLock::new(inner)));
+
         Self {
-            inner: Arc::new(RwLock::new(inner)),
             mac: [0xff, 0xff, 0xff, 0xff, 0xff, 0xff].into(),
         }
     }
 
     pub fn init(&mut self) {
-        let mut inner = self.inner.write();
+        let mut inner = RTL8139_STATE.try_get().unwrap().write();
         println!("rtl8139: Config start");
         // Turn the device on by writing to config_1 then reset the device to clear all data in the
         // buffers by writing 0x10 to cmd_reg
@@ -173,7 +186,8 @@ impl RTL8139 {
             // No RX Threshold
             inner
                 .rcr
-                .write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
+                //                .write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
+                .write(0xffffffff);
 
             // Enable Tx on the CR register
             inner.cmd_reg.write(RX_ENABLE | TX_ENABLE);
@@ -186,8 +200,7 @@ impl RTL8139 {
         println!("rtl8139: Registering interrupt handler");
 
         // FIXME: Figure out a way to remove the double clone here
-        let inner_clone = self.inner.clone();
-        register_interrupt(43, move || Self::handle_int(inner_clone.clone()));
+        register_interrupt(43, Self::handle_int);
         println!("rtl8139: Registered interrupt handler");
 
         // Unsafe block specific to launch of NIC
@@ -207,52 +220,34 @@ impl RTL8139 {
         self.mac.clone()
     }
 
-    pub fn write(&mut self, data: &[u8]) {
-        // NOTE: Are we sure we absolutely need to disable interrupts? maybe we can bypass this
-        //       with DMA.
-        // We clone the inner PCI device to avoid a deadlock when we re-enable PCI interrupts for
-        // this device
-        let mut device = { self.inner.read().device.clone() };
-
-        // Disable interrupts for this PCI device to avoid deadlock to do with inner
-        device.set_disable_int();
-        {
-            let mut inner = self.inner.write();
-            let cursor = inner.tx_cursor;
-            let ptr = VirtAddr::from_ptr(data.as_ptr());
-            let physical = unsafe { translate_addr(ptr).unwrap() }.as_u64() as u32;
-
-            unsafe {
-                inner.tx_dat[cursor].write(physical);
-                inner.tx_cmd[cursor].write((data.len() as u32) & 0xfff);
-
-                loop {
-                    if (inner.tx_cmd[cursor].read() & 0x8000) != 0 {
-                        break;
-                    }
-                }
-            }
-            inner.tx_cursor = (cursor + 1) % 4;
-        }
-        device.set_enable_int();
-    }
-
     pub fn try_read(&mut self) -> Option<Ether2Frame> {
-        if self.inner.read().frames.len() < 1 {
+        if FRAMES
+            .try_get()
+            .expect("rtl8139: frame queue uninit")
+            .is_empty()
+        {
             return None;
         }
 
-        self.inner.write().frames.pop()
+        FRAMES.try_get().expect("rtl8139: frame queue uninit").pop()
     }
 
-    fn handle_int(inner: Arc<RwLock<RTL8139Inner>>) {
-        let mut inner = inner.write();
+    pub fn split(&mut self) -> (RxSink, TxSink) {
+        (RxSink::new(), TxSink::new())
+    }
+
+    extern "x86-interrupt" fn handle_int(_: &mut InterruptStackFrame) {
+        let mut inner = RTL8139_STATE.try_get().unwrap().write();
         let isr = unsafe { inner.ack.read() };
 
         if (isr & RX_OK) != 0 {
             while (unsafe { inner.cmd_reg.read() } & RX_BUF_EMPTY) == 0 {
-                inner.rok();
+                if let Some(x) = inner.rok() {
+                    FRAMES.try_get().unwrap().push(x);
+                    WAKER.wake();
+                }
             }
+            println!("rtl8139: ROK");
         }
 
         if (isr & TX_OK) != 0 {
@@ -278,13 +273,55 @@ impl RTL8139 {
         unsafe {
             inner.ack.write(isr);
         }
+
+        crate::arch::interrupts::notify_eoi(43);
     }
 }
 
-impl RTL8139Inner {
+impl Stream for RTL8139 {
+    type Item = Ether2Frame;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        if let Some(x) = FRAMES.try_get().unwrap().pop() {
+            return Poll::Ready(Some(x));
+        }
+
+        WAKER.register(&cx.waker());
+
+        match FRAMES.try_get().unwrap().pop() {
+            Some(x) => {
+                WAKER.take();
+                Poll::Ready(Some(x))
+            }
+            None => Poll::Pending,
+        }
+    }
+}
+
+pub struct RxSink {
+    _private: (),
+}
+
+impl RxSink {
+    fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
+pub struct TxSink {
+    _private: (),
+}
+
+impl TxSink {
+    fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
+impl Rtl8139State {
     /// Function called on a ROK interrupt from the RTL8139 NIC, it parses the data written into
     /// the buffer as a ethernet frame and pushes it into our Vec.
-    fn rok(&mut self) {
+    fn rok(&mut self) -> Option<Ether2Frame> {
         // A packet frame looks something like this
         // +--------------------------------------------+
         // | |     HEADER     |            |   DATA   | |
@@ -310,9 +347,7 @@ impl RTL8139Inner {
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
         // If the frame is correctly parsed we push it into the queue, otherwise just skip it
-        let _ = buffer[4..length - 4]
-            .try_into()
-            .map(|x| self.frames.push(x));
+        let frame = buffer[4..length - 4].try_into().ok();
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
         // always point to the start of the header.
@@ -327,5 +362,35 @@ impl RTL8139Inner {
         }
 
         self.rx_cursor = self.rx_cursor % RX_BUF_LEN;
+
+        frame
+    }
+
+    pub fn write(&mut self, data: &[u8]) {
+        // NOTE: Are we sure we absolutely need to disable interrupts? maybe we can bypass this
+        //       with DMA.
+        // We clone the inner PCI device to avoid a deadlock when we re-enable PCI interrupts for
+        // this device
+
+        // Disable interrupts for this PCI device to avoid deadlock to do with inner
+        self.device.set_disable_int();
+        {
+            let cursor = self.tx_cursor;
+            let ptr = VirtAddr::from_ptr(data.as_ptr());
+            let physical = unsafe { translate_addr(ptr).unwrap() }.as_u64() as u32;
+
+            unsafe {
+                self.tx_dat[cursor].write(physical);
+                self.tx_cmd[cursor].write((data.len() as u32) & 0xfff);
+
+                loop {
+                    if (self.tx_cmd[cursor].read() & 0x8000) != 0 {
+                        break;
+                    }
+                }
+            }
+            self.tx_cursor = (cursor + 1) % 4;
+        }
+        self.device.set_enable_int();
     }
 }

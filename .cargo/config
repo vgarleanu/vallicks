@@ -1,6 +1,7 @@
 [build]
-target = "x86_64-barebone-none.json"
+target = "target-x86_64.json"
 rustflags = ["-Cdebuginfo=2", "-Cforce-frame-pointers=yes"]
 
-[target.'cfg(target_os = "none")']
-runner = "bootimage runner"
+[unstable]
+build-std = ["core", "compiler_builtins", "alloc"]
+build-std-features = ["compiler-builtins-mem"]

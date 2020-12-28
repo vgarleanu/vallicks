@@ -3,13 +3,8 @@ use crate::{
     arch::gdt,
     arch::memory::translate_addr,
     arch::pit::tick,
-    prelude::{
-        sync::{Mutex, RwLock},
-        *,
-    },
-    schedule::schedule,
+    prelude::{sync::Mutex, *},
 };
-use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
 use x86_64::{
@@ -17,65 +12,50 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-/// Convinience macro for creating a generic interrupt handler. It will look up all the registered
-/// interrupt handlers for a specific interrupt thats being fired, and if it finds it will call
-/// that function. It will then notify the PIC of a EOI regardless of whether there was a handler
-/// present or not.
-macro_rules! make_int_handler {
-    ($name:ident => $int:expr) => {
-        extern "x86-interrupt" fn $name(_frame: &mut InterruptStackFrame) {
-            let lock = INT_TABLE.read();
-            if let Some(x) = lock.get(&$int) {
-                x();
-            }
-            unsafe {
-                PICS.lock().notify_end_of_interrupt($int);
-            }
-        }
-    };
-}
-
 // Create a PIC instance masking all the interrupts for both pics, meaning all interrupts will be
 // sent and setting the offsets from 32 to 32 + 8
 pub static PICS: Mutex<ChainedPics> = Mutex::new(unsafe { ChainedPics::new(32, 40, 0xff, 0xff) });
 
 lazy_static! {
-    static ref INT_TABLE: RwLock<HashMap<i32, Box<dyn Fn() + Send + Sync + 'static>>> =
-        RwLock::new(HashMap::new());
-    static ref IDT: InterruptDescriptorTable = {
+    static ref IDT: Mutex<InterruptDescriptorTable> = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         idt.page_fault.set_handler_fn(page_fault_handler);
+        idt.simd_floating_point.set_handler_fn(handle_fpu_fault);
+        idt.x87_floating_point.set_handler_fn(handle_fpu_fault);
         unsafe {
             idt.double_fault
                 .set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX as u16);
         }
+
         idt[32].set_handler_fn(exception_irq0);
-        idt[33].set_handler_fn(int33);
-        idt[34].set_handler_fn(int34);
-        idt[35].set_handler_fn(int35);
-        idt[36].set_handler_fn(int36);
-        idt[37].set_handler_fn(int37);
-        idt[38].set_handler_fn(int38);
-        idt[39].set_handler_fn(int39);
-        idt[40].set_handler_fn(int40);
-        idt[41].set_handler_fn(int41);
-        idt[42].set_handler_fn(int42);
-        idt[43].set_handler_fn(int43);
-        idt[44].set_handler_fn(int44);
-        idt[45].set_handler_fn(int45);
-        idt[46].set_handler_fn(int46);
-        idt[47].set_handler_fn(int47);
-        idt[48].set_handler_fn(int48);
-        idt
+
+        idt[33].set_handler_fn(__default::<33>);
+        idt[34].set_handler_fn(__default::<34>);
+        idt[35].set_handler_fn(__default::<35>);
+        idt[36].set_handler_fn(__default::<36>);
+        idt[37].set_handler_fn(__default::<37>);
+        idt[38].set_handler_fn(__default::<38>);
+        idt[39].set_handler_fn(__default::<39>);
+        idt[40].set_handler_fn(__default::<40>);
+        idt[41].set_handler_fn(__default::<41>);
+        idt[42].set_handler_fn(__default::<42>);
+        idt[43].set_handler_fn(__default::<43>);
+        idt[44].set_handler_fn(__default::<44>);
+        idt[45].set_handler_fn(__default::<45>);
+        idt[46].set_handler_fn(__default::<46>);
+        idt[47].set_handler_fn(__default::<47>);
+        idt[48].set_handler_fn(__default::<48>);
+
+        Mutex::new(idt)
     };
 }
 
 /// Sets up the Interrupt Descriptor Table with all of our exception handles and generic interrupt
 /// handlers.
 pub fn init_idt() {
-    IDT.load();
+    unsafe { IDT.lock().load_unsafe() };
     println!("idt: Interrupt setup done...");
 }
 
@@ -84,12 +64,20 @@ pub fn init_idt() {
 /// called it looks up the interrupt ID in the table and calls the function.
 ///
 /// This allows our modules to hotswap interrupt handlers when required.
-pub fn register_interrupt<T>(interrupt: i32, handler: T)
-where
-    T: Fn() + Send + Sync + 'static,
-{
-    let mut lock = INT_TABLE.write();
-    lock.insert(interrupt, Box::new(handler));
+pub fn register_interrupt(
+    interrupt: usize,
+    handler: for<'r> extern "x86-interrupt" fn(&'r mut InterruptStackFrame),
+) {
+    // set our new interrupt handler
+    IDT.lock()[interrupt].set_handler_fn(handler);
+    // reload the idt
+    unsafe { IDT.lock().load_unsafe() };
+}
+
+pub fn notify_eoi(int: u8) {
+    unsafe {
+        PICS.lock().notify_end_of_interrupt(int);
+    }
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
@@ -110,11 +98,16 @@ extern "x86-interrupt" fn page_fault_handler(
     println!("Err code: {:?}", error_code);
     println!("{:#?}", stack_frame);
     println!("{:?}", unsafe { translate_addr(stack_frame.stack_pointer) });
-    halt();
+
+    panic!("PageFault, Tried to access: {:#x?}", addr);
 }
 
 extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackFrame, _: u64) -> ! {
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn handle_fpu_fault(_: &mut InterruptStackFrame) {
+    panic!("EXCEPTION: FPU Fault");
 }
 
 extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
@@ -122,22 +115,10 @@ extern "x86-interrupt" fn exception_irq0(_: &mut InterruptStackFrame) {
     unsafe {
         PICS.lock().notify_end_of_interrupt(32);
     }
-    schedule();
 }
 
-make_int_handler!(int33 => 33);
-make_int_handler!(int34 => 34);
-make_int_handler!(int35 => 35);
-make_int_handler!(int36 => 36);
-make_int_handler!(int37 => 37);
-make_int_handler!(int38 => 38);
-make_int_handler!(int39 => 39);
-make_int_handler!(int40 => 40);
-make_int_handler!(int41 => 41);
-make_int_handler!(int42 => 42);
-make_int_handler!(int43 => 43);
-make_int_handler!(int44 => 44);
-make_int_handler!(int45 => 45);
-make_int_handler!(int46 => 46);
-make_int_handler!(int47 => 47);
-make_int_handler!(int48 => 48);
+extern "x86-interrupt" fn __default<const IRQ: u8>(_: &mut InterruptStackFrame) {
+    unsafe {
+        PICS.lock().notify_end_of_interrupt(IRQ);
+    }
+}

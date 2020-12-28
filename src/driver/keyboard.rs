@@ -1,55 +1,66 @@
 use crate::{arch::interrupts::register_interrupt, prelude::*};
-use crate::prelude::sync::{RwLock, Arc};
-use arraydeque::{ArrayDeque, Wrapping};
-use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard as KeyboardBackend, ScancodeSet1};
+use conquer_once::spin::OnceCell;
+use core::{
+    pin::Pin,
+    task::{Context, Poll},
+};
+use crossbeam_queue::ArrayQueue;
+use futures_util::stream::Stream;
+use futures_util::task::AtomicWaker;
 use x86_64::instructions::port::Port;
+use x86_64::structures::idt::InterruptStackFrame;
+
+static SCANCODE_QUEUE: OnceCell<ArrayQueue<u8>> = OnceCell::uninit();
+static WAKER: AtomicWaker = AtomicWaker::new();
 
 pub struct Keyboard {
-    inner: Arc<RwLock<KeyboardInner>>,
-}
-
-struct KeyboardInner {
-    backend: KeyboardBackend<layouts::Us104Key, ScancodeSet1>,
-    input_buffer: ArrayDeque<[char; 64], Wrapping>,
-    port: Port<u8>,
-}
-
-impl KeyboardInner {
-    fn new() -> Self {
-        Self {
-            backend: KeyboardBackend::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore),
-            input_buffer: ArrayDeque::new(),
-            port: Port::new(0x60),
-        }
-    }
-
-    fn handle_int(&mut self) {
-        if let Ok(Some(key_event)) = self.backend.add_byte(unsafe { self.port.read() }) {
-            if let Some(DecodedKey::Unicode(key)) = self.backend.process_keyevent(key_event) {
-                if !key.is_ascii() {
-                    return;
-                }
-
-                self.input_buffer.push_back(key);
-            }
-        }
-    }
+    _private: (),
 }
 
 impl Keyboard {
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(KeyboardInner::new())),
+        println!("keyboard: init");
+        SCANCODE_QUEUE.init_once(|| ArrayQueue::new(0xff));
+        register_interrupt(33, Self::handle_int);
+
+        Self { _private: () }
+    }
+
+    pub fn init(&self) {}
+
+    extern "x86-interrupt" fn handle_int(_: &mut InterruptStackFrame) {
+        let mut port = Port::new(0x60);
+
+        if let Ok(queue) = SCANCODE_QUEUE.try_get() {
+            if let Ok(_) = queue.push(unsafe { port.read() }) {
+                WAKER.wake();
+            } else {
+                println!("keyboard: queue full");
+            }
+        } else {
+            println!("keyboard: queue not init");
         }
-    }
 
-    pub fn init(&self) {
-        println!("keyboard: Registering IRQ");
-        let inner = self.inner.clone();
-        register_interrupt(33, move || Self::handle_int(inner.clone()));
+        crate::arch::interrupts::notify_eoi(33);
     }
+}
 
-    fn handle_int(inner: Arc<RwLock<KeyboardInner>>) {
-        inner.write().handle_int();
+impl Stream for Keyboard {
+    type Item = u8;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        if let Some(x) = SCANCODE_QUEUE.try_get().unwrap().pop() {
+            return Poll::Ready(Some(x));
+        }
+
+        WAKER.register(&cx.waker());
+
+        match SCANCODE_QUEUE.try_get().unwrap().pop() {
+            Some(x) => {
+                WAKER.take();
+                Poll::Ready(Some(x))
+            }
+            None => Poll::Pending,
+        }
     }
 }

@@ -7,7 +7,7 @@ use x86_64::{
     registers::control::Cr3,
     structures::paging::{
         mapper, page_table::FrameError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTable,
-        PageTableFlags as Flags, PhysFrame, Size4KiB, UnusedPhysFrame,
+        PageTableFlags as Flags, PhysFrame, Size4KiB,
     },
     PhysAddr, VirtAddr,
 };
@@ -24,18 +24,17 @@ impl BootInfoFrameAllocator {
         Self { mem_map, next: 0 }
     }
 
-    fn usable_frames(&self) -> impl Iterator<Item = UnusedPhysFrame> {
+    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
         let regions = self.mem_map.iter();
         let usable_regions = regions.filter(|x| x.region_type == MemoryRegionType::Usable);
         let addr_ranges = usable_regions.map(|x| x.range.start_addr()..x.range.end_addr());
         let frame_addresses = addr_ranges.flat_map(|x| x.step_by(0x1000));
-        let frames = frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)));
-        frames.map(|f| unsafe { UnusedPhysFrame::new(f) })
+        frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
     }
 }
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
-    fn allocate_frame(&mut self) -> Option<UnusedPhysFrame> {
+    fn allocate_frame(&mut self) -> Option<PhysFrame> {
         let frame = self.usable_frames().nth(self.next);
         self.next += 1;
         frame
@@ -78,7 +77,7 @@ pub fn alloc_stack(
     size_in_pages: u64,
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) -> Result<StackBounds, mapper::MapToError> {
+) -> Result<StackBounds, mapper::MapToError<Size4KiB>> {
     static STACK_ALLOC_NEXT: AtomicU64 = AtomicU64::new(0x5555_5555_0000);
 
     let guard_page_start = STACK_ALLOC_NEXT.fetch_add(
@@ -96,7 +95,7 @@ pub fn alloc_stack(
         let frame = frame_allocator
             .allocate_frame()
             .ok_or(mapper::MapToError::FrameAllocationFailed)?;
-        mapper.map_to(page, frame, flags, frame_allocator)?.flush();
+        unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() };
     }
     Ok(StackBounds {
         start: stack_start.start_address(),

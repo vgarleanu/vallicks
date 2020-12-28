@@ -1,4 +1,5 @@
 //! Module planned to be used for checking for specific features and enabling them
+use crate::arch::enable_fpu_on_cpuid;
 use crate::prelude::*;
 use x86::cpuid::CpuId;
 
@@ -23,6 +24,7 @@ pub fn cpu_info() {
     }
     if features.has_fpu() {
         print!(" fpu");
+        enable_fpu_on_cpuid();
     }
     if features.has_de() {
         print!(" de");

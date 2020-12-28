@@ -2,7 +2,6 @@ use crate::driver::*;
 use crate::net::frames::{
     arp::ArpPacket, eth2::Ether2Frame, icmp::Icmp, ipaddr::Ipv4Addr, ipv4::Ipv4, mac::Mac,
 };
-use crate::naked_std::thread;
 use crate::prelude::*;
 use core::array::TryFromSliceError;
 use core::convert::TryInto;
@@ -32,7 +31,7 @@ pub fn net_thread() {
             if frame.dtype() == 0x0806 {
                 let reply = handle_arp(frame, driver, ip);
 
-                driver.write(Into::<Vec<u8>>::into(reply).as_ref());
+                //                driver.write(Into::<Vec<u8>>::into(reply).as_ref());
             }
 
             if frame.dtype() == 0x0800 {
@@ -45,10 +44,6 @@ pub fn net_thread() {
                 }
             }
         }
-
-        // FIXME: For some reason a context switch fails to restore %rax, causing lock xadd
-        //        %rcx,0x10(%rax) to cause a double fault
-        thread::sleep(1); // sleep for 10 milis
     }
 }
 

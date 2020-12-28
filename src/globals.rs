@@ -1,7 +1,6 @@
 use crate::arch::memory::BootInfoFrameAllocator;
 use crate::prelude::sync::Mutex;
 use crate::prelude::*;
-use crate::schedule::scheduler::Scheduler;
 use buddy_system_allocator::{Heap, LockedHeapWithRescue};
 use x86_64::structures::paging::mapper::OffsetPageTable;
 
@@ -27,9 +26,6 @@ pub static ALLOCATOR: LockedHeapWithRescue = LockedHeapWithRescue::new(|heap: &m
     }
 });
 
-/// This is our global scheduler instance, it is initialized on boot, and allows threads to be
-/// added removed etc.
-pub(crate) static SCHEDULER: Mutex<Option<Scheduler>> = Mutex::new(None);
 /// This is our global page mapper
 pub(crate) static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
 /// This is our global frame allocator

@@ -166,6 +166,7 @@
 #![cfg_attr(test, allow(unused_imports))]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
+#![allow(incomplete_features)]
 // All the features included in here are either needed for correct kernel operation or needed by
 // naked_std.
 #![feature(
@@ -183,14 +184,13 @@
     box_syntax,
     cfg_target_thread_local,
     char_error_internals,
-    clamp,
     concat_idents,
     const_raw_ptr_deref,
+    const_generics,
     container_error_extra,
     core_intrinsics,
     custom_test_frameworks,
     decl_macro,
-    doc_alias,
     doc_cfg,
     doc_keyword,
     doc_masked,
@@ -219,20 +219,17 @@
     needs_panic_runtime,
     never_type,
     nll,
-    optin_builtin_traits,
     option_expect_none,
     panic_info_message,
     panic_internals,
     prelude_import,
     ptr_internals,
     raw,
-    renamed_spin_loop,
     rustc_attrs,
     rustc_private,
     shrink_to,
     slice_concat_ext,
     slice_internals,
-    specialization,
     std_internals,
     stdsimd,
     stmt_expr_attributes,
@@ -241,38 +238,35 @@
     thread_local,
     toowned_clone_into,
     trace_macros,
-    track_caller,
     try_reserve,
     try_trait,
     type_alias_impl_trait,
     unboxed_closures,
     untagged_unions,
     unwind_attributes,
-    vec_into_raw_parts
+    vec_into_raw_parts,
+    wake_trait
 )]
-//    #![feature(staged_api)], // enable feature to allow for stability/unstability markers (TBE: 0.1.0)
-#![deny(missing_docs)]
 extern crate alloc;
 
 /// The arch module holds the lowlevel initation functions to prepare the CPU for the kernel.
 pub mod arch;
+/// The async module holds all the code necessary for async/await support
+pub mod r#async;
 /// This module holds some drivers that come with vallicks by default, such as a vbe, vga, serial
 /// and rtl8139 NIC driver.
 pub mod driver;
 /// This module holds the global states required for proper operation by the kernel, these include
 /// the allocator, the scheduler and the mapper.
 pub(crate) mod globals;
-/// This is the standard library used and exposed by vallicks.
-pub mod naked_std;
 /// This holds  our bare network primitives such as packet structures and parsers.
 pub mod net;
 /// This is the prelude for our kernel which holds the most basic required methods and macros.
 #[prelude_import]
 pub mod prelude;
-/// This holds all the modules related to the scheduler.
-pub(crate) mod schedule;
 
-pub(crate) use crate::naked_std::*; // Re-export all of std for std (allows me to not fucking change all imports when copying libstd)
+pub use crate::r#async as async_;
+
 #[allow(unused_imports)]
 use crate::{
     arch::{
@@ -282,7 +276,6 @@ use crate::{
     },
     driver::*,
     prelude::{compile_warning, format, halt},
-    schedule::init_scheduler,
 };
 use bootloader::BootInfo;
 use core::panic::PanicInfo;
@@ -383,12 +376,8 @@ pub fn init(boot_info: &'static BootInfo) {
             |_| println!("alloc: Allocator init done..."),
         );
 
-    init_scheduler();
-
     let mut pci = pci::Pci::new();
     pci.enumerate();
-
-    Driver::load(&mut pci.devices);
 }
 
 /// Method informs Qemu of the status of the VM, allowing us to send error codes downstream. This
@@ -431,21 +420,6 @@ pub fn hlt_loop() -> ! {
 /// another instruction.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    let thread_id = schedule::current_thread_id().as_u64();
-    // If current_thread_id is 0 that means that the panic was before the main thread was launched
-    // if that is the case we simply want to print and halt, otherwise we inform the scheduler to
-    // mark the thread as dirty
-    if thread_id > 1 {
-        // We print and halt here not only for better panic message but to remove a race condition
-        // where the dirty thread gets freed before we can print the panic info
-        #[cfg(test)]
-        uprint!("\nthread {} has panic'd with {}", thread_id, info);
-
-        println!("thread {} has panic'd with {}", thread_id, info);
-        schedule::mark_dirty(format!("{}", info));
-        halt();
-    }
-
     #[cfg(test)]
     uprint!("    ....FAILED!!!\n");
     #[cfg(test)]

@@ -9,17 +9,10 @@ const PIT_REG: u16 = 0x43; // Mode/Command register (write only, a read is ignor
 
 /// Represents the frequency of the PIT in Hz.
 /// i.e. 100hz means 100 ticks per second
-#[cfg(debug_assertions)]
-const TARGET_FREQ: u64 = 1000; // Hz
-#[cfg(not(debug_assertions))]
 const TARGET_FREQ: u64 = 10000; // Hz
 /// Represents the value we send to the PIT to set up the desired frequency
 const RELOAD_VALUE: u64 = 1193182 / TARGET_FREQ;
 
-#[cfg(debug_assertions)]
-const TICK_DIVIDER: u64 = 1;
-
-#[cfg(not(debug_assertions))]
 const TICK_DIVIDER: u64 = 10;
 
 lazy_static::lazy_static! {
@@ -53,4 +46,9 @@ pub fn get_secs() -> u64 {
 /// Converts tick into miliseconds since boot
 pub fn get_milis() -> u64 {
     TICK.load(Ordering::SeqCst) / TICK_DIVIDER
+}
+
+/// return ticks
+pub fn ticks() -> u64 {
+    TICK.load(Ordering::SeqCst)
 }
