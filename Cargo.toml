@@ -22,8 +22,7 @@ buddy_system_allocator = { version = "0.6.0", features = ["const_fn"] }
 vallicks-macros = { path = "./libs/vallicks_macros" }
 crossbeam-queue = { version = "0.3.1", default-features = false, features = ["alloc"] }
 conquer-once = { version = "0.2.0", default-features = false }
-futures-util = { version = "0.3.8", default-features = false, features = ["alloc"] }
-smoltcp = { version = "0.6.0", default-features = false, features = ["alloc", "ethernet", "proto-ipv4", "socket-icmp"] }
+futures-util = { version = "0.3.8", default-features = false, features = ["alloc", "async-await", "async-await-macro", "sink"] }
 
 [profile.dev]
 panic = "abort"
