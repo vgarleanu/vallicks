@@ -5,11 +5,18 @@
 #![reexport_test_harness_main = "test_main"]
 
 use vallicks::async_::*;
+use vallicks::arch::pit::get_milis;
 use vallicks::driver::rtl8139::RTL8139;
 use vallicks::driver::Driver;
 use vallicks::net::wire::ipaddr::Ipv4Addr;
 use vallicks::net::NetworkDevice;
 use vallicks::prelude::*;
+use vallicks::net::wire::eth2::Ether2Frame;
+
+use core::task::Poll;
+use core::pin::Pin;
+
+use futures_util::task::AtomicWaker;
 
 #[entrypoint]
 fn main() {
@@ -24,12 +31,39 @@ async fn send_packets() {
         if phy.init().is_ok() {
             let mut netdev = NetworkDevice::new(&mut phy);
             netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
-            spawn(do_something());
+            let mut sender = netdev.get_sender();
             spawn(async move { netdev.run_forever().await });
+            spawn(async move {
+                let mut sender = sender;
+                loop {
+                    After::new(1000).await; // run after 1000ms
+                    sender.send(Ether2Frame::new());
+                }
+            });
         }
     }
 }
 
-async fn do_something() {
-    println!("lmao");
+struct After(u64, u64, AtomicWaker);
+
+impl After {
+    pub fn new(every: u64) -> Self {
+        let cur = get_milis();
+
+        Self(cur, cur + every, AtomicWaker::new())
+    }
+}
+
+impl core::future::Future for After {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+        if get_milis() >= self.1 {
+            return Poll::Ready(());
+        }
+
+        self.2.register(&cx.waker());
+        self.2.wake();
+        Poll::Pending
+    }
 }
