@@ -3,25 +3,28 @@
 //! * http://www.jbox.dk/sanos/source/sys/dev/rtl8139.c.html
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139_ProgrammersGuide.pdf
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139D_DataSheet.pdf
-use crate::{
-    arch::{interrupts::register_interrupt, memory::translate_addr, pci::Device},
-    net::{
-        frames::{eth2::Ether2Frame, mac::Mac},
-        StreamSplit,
-    },
-    prelude::sync::{Arc, RwLock},
-    prelude::*,
-};
-use conquer_once::spin::OnceCell;
+use crate::arch::interrupts::register_interrupt;
+use crate::arch::memory::translate_addr;
+use crate::arch::pci::Device;
+
+use crate::driver::Driver;
+use crate::driver::NetworkDriver;
+use crate::net::frames::eth2::Ether2Frame;
+use crate::net::frames::mac::Mac;
+
+use crate::prelude::sync::Arc;
+use crate::prelude::sync::RwLock;
+use crate::prelude::*;
 
 use core::convert::TryInto;
+use core::marker::PhantomData;
+use core::pin::Pin;
+use core::task::Context;
+use core::task::Poll;
+
+use conquer_once::spin::OnceCell;
 use crossbeam_queue::SegQueue;
 
-use core::{
-    marker::PhantomData,
-    pin::Pin,
-    task::{Context, Poll},
-};
 use futures_util::sink::Sink;
 use futures_util::stream::Stream;
 use futures_util::task::AtomicWaker;
@@ -97,7 +100,73 @@ pub struct RTL8139 {
 }
 
 impl RTL8139 {
-    pub fn new(device: Device) -> Self {
+    extern "x86-interrupt" fn handle_int(_: &mut InterruptStackFrame) {
+        // At some point here we will want to also wake the network stack because there are packets
+        // available.
+        let mut inner = RTL8139_STATE.try_get().unwrap().write();
+        let isr = unsafe { inner.ack.read() };
+
+        if (isr & RX_OK) != 0 {
+            while (unsafe { inner.cmd_reg.read() } & RX_BUF_EMPTY) == 0 {
+                if let Some(x) = inner.rok() {
+                    FRAMES.try_get().unwrap().push(x);
+                    WAKER.wake();
+                }
+            }
+            println!("rtl8139: ROK");
+        }
+
+        if (isr & TX_OK) != 0 {
+            println!("rtl8139: TOK");
+        }
+
+        if (isr & RX_ERR) != 0 {
+            println!("rtl8139: RxErr");
+        }
+
+        if (isr & TX_ERR) != 0 {
+            println!("rtl8139: TxErr");
+        }
+
+        if (isr & (RDU | TDU)) != 0 {
+            println!("rtl8139: Rx/Tx Buffer Overflow");
+        }
+
+        if (isr & SYS_ERR) != 0 {
+            println!("rtl8139: SysErr");
+        }
+
+        unsafe {
+            inner.ack.write(isr);
+        }
+
+        crate::arch::interrupts::notify_eoi(43);
+    }
+}
+
+impl Driver for RTL8139 {
+    type Return = Result<(), ()>;
+
+    fn probe() -> Option<Device> {
+        let mut devices = crate::arch::pci::Pci::new();
+        devices.enumerate();
+
+        let device = devices.find(0x2, 0x00, 0x10ec, 0x8139);
+
+        if device.is_some() {
+            println!("rtl8139: probing positive");
+        } else {
+            println!("rtl8139: probing negative");
+        }
+
+        device
+    }
+
+    fn preload(mut device: Device) -> Self {
+        // initialize the device.
+        device.set_mastering();
+        device.set_enable_int();
+
         let base = device.port_base.unwrap() as u16;
         let inner = Rtl8139State {
             device,
@@ -146,7 +215,7 @@ impl RTL8139 {
         }
     }
 
-    pub fn init(&mut self) {
+    fn init(&mut self) -> Self::Return {
         let mut inner = RTL8139_STATE.try_get().unwrap().write();
         println!("rtl8139: Config start");
         // Turn the device on by writing to config_1 then reset the device to clear all data in the
@@ -218,55 +287,16 @@ impl RTL8139 {
                 .imr
                 .write(0xffff | RX_OK | TX_OK | RX_ERR | TX_ERR | SYS_ERR | RDU | TDU);
         }
-    }
 
-    extern "x86-interrupt" fn handle_int(_: &mut InterruptStackFrame) {
-        let mut inner = RTL8139_STATE.try_get().unwrap().write();
-        let isr = unsafe { inner.ack.read() };
-
-        if (isr & RX_OK) != 0 {
-            while (unsafe { inner.cmd_reg.read() } & RX_BUF_EMPTY) == 0 {
-                if let Some(x) = inner.rok() {
-                    FRAMES.try_get().unwrap().push(x);
-                    WAKER.wake();
-                }
-            }
-            println!("rtl8139: ROK");
-        }
-
-        if (isr & TX_OK) != 0 {
-            println!("rtl8139: TOK");
-        }
-
-        if (isr & RX_ERR) != 0 {
-            println!("rtl8139: RxErr");
-        }
-
-        if (isr & TX_ERR) != 0 {
-            println!("rtl8139: TxErr");
-        }
-
-        if (isr & (RDU | TDU)) != 0 {
-            println!("rtl8139: Rx/Tx Buffer Overflow");
-        }
-
-        if (isr & SYS_ERR) != 0 {
-            println!("rtl8139: SysErr");
-        }
-
-        unsafe {
-            inner.ack.write(isr);
-        }
-
-        crate::arch::interrupts::notify_eoi(43);
+        Ok(())
     }
 }
 
-impl StreamSplit for RTL8139 {
+impl NetworkDriver for RTL8139 {
     type RxSink = RxSink;
     type TxSink = TxSink;
 
-    fn split(&mut self) -> (Self::RxSink, Self::TxSink) {
+    fn parts(&mut self) -> (Self::RxSink, Self::TxSink) {
         (RxSink::new(), TxSink::new())
     }
 
