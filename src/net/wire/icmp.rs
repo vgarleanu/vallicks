@@ -5,6 +5,15 @@ use core::convert::Into;
 use core::convert::TryFrom;
 use core::convert::TryInto;
 use core::mem::transmute;
+use core::ops::{RangeFrom, RangeInclusive};
+
+const ICMP_ECHO_MIN_SIZE: usize = 8;
+const ICMP_ECHO_PACKET_TYPE: usize = 0;
+const ICMP_ECHO_CODE: usize = 1;
+const ICMP_ECHO_CSUM: RangeInclusive<usize> = 2..=3;
+const ICMP_ECHO_IDENT: RangeInclusive<usize> = 4..=5;
+const ICMP_ECHO_SEQ: RangeInclusive<usize> = 6..=7;
+const ICMP_ECHO_DATA: RangeFrom<usize> = 8..;
 
 #[derive(Clone, Debug)]
 #[repr(u8)]
@@ -51,70 +60,88 @@ impl From<u8> for IcmpCode {
 
 /// Our basic ICMP packet struct.
 /// TODO: Better packet structure docs.
-#[derive(Clone, Debug)]
-pub struct Icmp {
-    pub packet_type: IcmpType,
-    pub code: IcmpCode,
-    pub checksum: u16,
-    pub identifier: u16,
-    pub sequence_number: u16,
-    pub data: Vec<u8>,
-}
+#[derive(Clone)]
+pub struct Icmp(Vec<u8>);
 
-impl TryFrom<&[u8]> for Icmp {
-    type Error = TryFromSliceError;
+impl Icmp {
+    pub fn new() -> Self {
+        Self(vec![0; 8])
+    }
 
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        // We do this atm as we cant create a custom instance of TryFromSliceError
-        if data.len() < 8 {
-            panic!()
+    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
+        if data.len() < ICMP_ECHO_MIN_SIZE {
+            return Err(());
         }
 
-        let op_type: IcmpType = data[0].into();
-
-        Ok(match op_type {
-            IcmpType::Echo | IcmpType::EchoReply => Self {
-                packet_type: op_type,
-                code: data[1].into(),
-                checksum: u16::from_be_bytes([data[2], data[3]]),
-                identifier: u16::from_be_bytes([data[4], data[5]]),
-                sequence_number: u16::from_be_bytes([data[6], data[7]]),
-                data: data[8..].to_vec(),
-            },
-        })
+        Ok(Self(data))
     }
-}
 
-impl TryFrom<Vec<u8>> for Icmp {
-    type Error = TryFromSliceError;
-
-    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
-        data.as_slice().try_into()
+    pub fn packet_type(&self) -> IcmpType {
+        self.0[ICMP_ECHO_PACKET_TYPE].into()
     }
-}
 
-impl Into<Vec<u8>> for Icmp {
-    fn into(self) -> Vec<u8> {
-        let Self {
-            packet_type,
-            code,
-            checksum,
-            identifier,
-            sequence_number,
-            data,
-        } = self;
+    pub fn code(&self) -> IcmpCode {
+        self.0[ICMP_ECHO_CODE].into()
+    }
 
-        let hdr: &[u8] = &[];
+    pub fn checksum(&self) -> u16 {
+        u16::from_be_bytes(
+            self.0[ICMP_ECHO_CSUM]
+                .try_into()
+                .expect("net: icmp got no checksum"),
+        )
+    }
 
-        let op = &[packet_type.raw(), code.raw()];
+    pub fn identifier(&self) -> u16 {
+        u16::from_be_bytes(
+            self.0[ICMP_ECHO_IDENT]
+                .try_into()
+                .expect("net: icmp got no checksum"),
+        )
+    }
 
-        let checksum = &0u16.to_be_bytes()[..];
-        let id = &identifier.to_be_bytes()[..];
-        let seq = &sequence_number.to_be_bytes()[..];
+    pub fn seq(&self) -> u16 {
+        u16::from_be_bytes(
+            self.0[ICMP_ECHO_SEQ]
+                .try_into()
+                .expect("net: icmp got no checksum"),
+        )
+    }
 
-        let old = [op, checksum, id, seq, &data].join(hdr);
-        let csum = &crate::net::wire::ipv4::checksum(&old).to_le_bytes()[..];
+    pub fn data(&self) -> &[u8] {
+        &self.0[ICMP_ECHO_DATA]
+    }
 
-        [op, csum, id, seq, &data].join(hdr)
+    pub fn set_packet_type(&mut self, packet_type: IcmpType) {
+        self.0[ICMP_ECHO_PACKET_TYPE] = packet_type.raw();
+    }
+
+    pub fn set_code(&mut self, code: IcmpCode) {
+        self.0[ICMP_ECHO_CODE] = code.raw();
+    }
+
+    pub fn set_checksum(&mut self) {
+        // set it to 0
+        self.0[ICMP_ECHO_CSUM].copy_from_slice(&0u16.to_le_bytes());
+
+        let csum = crate::net::wire::ipv4::checksum(&self.0);
+        self.0[ICMP_ECHO_CSUM].copy_from_slice(&csum.to_le_bytes());
+    }
+
+    pub fn set_identifier(&mut self, identifier: u16) {
+        self.0[ICMP_ECHO_IDENT].copy_from_slice(&identifier.to_be_bytes());
+    }
+
+    pub fn set_seq(&mut self, seq: u16) {
+        self.0[ICMP_ECHO_SEQ].copy_from_slice(&seq.to_be_bytes());
+    }
+
+    pub fn set_data<T: AsRef<[u8]>>(&mut self, data: T) {
+        self.0.truncate(ICMP_ECHO_MIN_SIZE);
+        self.0.extend_from_slice(data.as_ref());
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
     }
 }

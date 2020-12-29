@@ -144,17 +144,16 @@ impl<T: StreamSplit> ProcessPacket<Ipv4> for NetworkDevice<T> {
 
         match item.proto() {
             Ipv4Proto::ICMP => {
-                let packet: Icmp = item.data().try_into().unwrap();
+                let packet = Icmp::from(item.data().to_vec()).ok()?;
 
                 return self.process_packet(packet).map(|data| {
-                    let data: Vec<u8> = data.into();
                     let mut packet = Ipv4::new_v4();
                     packet.set_proto(Ipv4Proto::ICMP);
                     packet.set_sip(self.ip);
                     packet.set_dip(item.sip());
                     packet.set_id(item.id());
                     packet.set_flags(0x40);
-                    packet.set_data(data);
+                    packet.set_data(data.into_inner());
                     packet.set_len();
                     packet.set_checksum();
                     packet
@@ -172,24 +171,13 @@ impl<T: StreamSplit> ProcessPacket<Icmp> for NetworkDevice<T> {
     type Output = Icmp;
 
     fn process_packet(&mut self, item: Icmp) -> Option<Self::Output> {
-        let Icmp {
-            packet_type,
-            code,
-            checksum,
-            identifier,
-            sequence_number,
-            data,
-        } = item;
-
-        match packet_type {
-            IcmpType::Echo => Some(Icmp {
-                packet_type: IcmpType::EchoReply,
-                code,
-                checksum: 0,
-                identifier,
-                sequence_number,
-                data,
-            }),
+        match item.packet_type() {
+            IcmpType::Echo => {
+                let mut reply = item.clone();
+                reply.set_packet_type(IcmpType::EchoReply);
+                reply.set_checksum();
+                Some(reply)
+            },
             _ => None,
         }
     }

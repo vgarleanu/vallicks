@@ -1,4 +1,4 @@
-//! RTL8139 Network driver tested inside qemu.
+//! RTL8140 Network driver tested inside qemu.
 //! Based on:
 //! * http://www.jbox.dk/sanos/source/sys/dev/rtl8139.c.html
 //! * https://www.cs.usfca.edu/~cruse/cs326f04/RTL8139_ProgrammersGuide.pdf
@@ -14,7 +14,6 @@ use crate::{
 };
 use conquer_once::spin::OnceCell;
 
-use alloc::borrow::ToOwned;
 use core::convert::TryInto;
 use crossbeam_queue::SegQueue;
 
