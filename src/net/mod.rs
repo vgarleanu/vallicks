@@ -13,13 +13,15 @@ use crate::net::wire::ipv4::{Ipv4, Ipv4Proto};
 use crate::net::wire::mac::Mac;
 
 use crate::driver::NetworkDriver;
+use crate::sync::mpsc::*;
 
 use hashbrown::HashMap;
 
 use futures_util::sink::SinkExt;
 use futures_util::stream::Fuse;
 use futures_util::stream::StreamExt;
-use futures_util::select_biased;
+use futures_util::future::FutureExt;
+use futures_util::future;
 
 /// Trait used for parsing a packet of type `Item`.
 trait ProcessPacket<Item> {
@@ -42,17 +44,23 @@ pub struct NetworkDevice<T: NetworkDriver> {
     ip: Ipv4Addr,
     /// Translation table for arp
     arp_translation_table: HashMap<Mac, Ipv4Addr>,
+    /// Tx queue reader
+    tx_queue: Option<UnboundedReceiver<Ether2Frame>>,
+    /// Tx queue sender
+    tx_queue_sender: UnboundedSender<Ether2Frame>,
 }
 
 impl<T: NetworkDriver> NetworkDevice<T> {
     pub fn new(device: &mut T) -> Self {
         let (rx_sink, tx_sink) = device.parts();
+        let (tx_queue_sender, tx_queue) = channel();
         Self {
             rx_sink: rx_sink.fuse(),
             tx_sink,
             mac: device.mac(),
             arp_translation_table: HashMap::new(),
             ip: Ipv4Addr::new(127, 0, 0, 1),
+            tx_queue: Some(tx_queue), tx_queue_sender
         }
     }
 
@@ -60,28 +68,35 @@ impl<T: NetworkDriver> NetworkDevice<T> {
         self.ip = ip;
     }
 
+    pub fn get_sender(&self) -> UnboundedSender<Ether2Frame> {
+        self.tx_queue_sender.clone()
+    }
+
     /// Function will run forever grabbing packets from an rx sink and processing them.
     pub async fn run_forever(&mut self) {
+        let mut tx_queue = self.tx_queue.take().expect("missing tx_queue");
         loop {
-            let mut rx_item = self.rx_sink.next();
-            let mut tx_item = futures_util::future::pending::<()>();
+            let rx_item = self.rx_sink.next();
+            let tx_item = tx_queue.recv().boxed().fuse();
 
-            select_biased! {
-                // We have an incoming packet which needs to be handle.
-                frame = rx_item => {
-                    if let Some(frame) = frame {
-                        self.try_handle_tx(frame).await;
-                    }
+            match future::select(rx_item, tx_item).await {
+                future::Either::Left((item, _)) => if let Some(frame) = item {
+                    self.try_handle_rx(frame).await;
                 },
+                future::Either::Right((item, _)) => if let Some(frame) = item {
+                    if let Err(tx_send_err) = self.tx_sink.send(frame.into_inner()).await {
+                        println!("net: tx_send_err {:?}", tx_send_err);
+                    }
 
-                item = tx_item => {
-                    println!("got tx");
+                    if let Err(tx_flush_err) = self.tx_sink.flush().await {
+                        println!("net: tx_flush_err {:?}", tx_flush_err);
+                    }
                 }
             }
         }
     }
 
-    async fn try_handle_tx(&mut self, frame: Ether2Frame) {
+    async fn try_handle_rx(&mut self, frame: Ether2Frame) {
         match frame.dtype() {
             EtherType::IPv4 => {
                 let ip_packet = Ipv4::from(frame.data().to_vec()).unwrap();

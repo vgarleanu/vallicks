@@ -88,3 +88,5 @@ impl<T> UnboundedReceiver<T> {
         self.chan.recv(cx)
     }
 }
+
+unsafe impl<T> Sync for UnboundedReceiver<T> {}
