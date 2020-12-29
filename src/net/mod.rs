@@ -7,33 +7,19 @@ use crate::prelude::*;
 
 use crate::net::wire::arp::{ArpOpcode, ArpPacket};
 use crate::net::wire::eth2::{Ether2Frame, EtherType};
-use crate::net::wire::icmp::{Icmp, IcmpCode, IcmpType};
+use crate::net::wire::icmp::{Icmp, IcmpType};
 use crate::net::wire::ipaddr::Ipv4Addr;
 use crate::net::wire::ipv4::{Ipv4, Ipv4Proto};
 use crate::net::wire::mac::Mac;
 
-use alloc::vec::Vec;
+use crate::driver::NetworkDriver;
+
 use hashbrown::HashMap;
 
-use futures_util::sink::Sink;
 use futures_util::sink::SinkExt;
-use futures_util::stream::Stream;
+use futures_util::stream::Fuse;
 use futures_util::stream::StreamExt;
-
-use core::convert::TryInto;
-
-/// Trait used to mark a network device driver.
-pub trait StreamSplit {
-    /// Stream from where we can acquire new ether2 frames.
-    type RxSink: Stream<Item = Ether2Frame> + Unpin;
-    /// Sink where we can dispatch packets.
-    type TxSink: Sink<Vec<u8>, Error = ()> + Unpin;
-
-    /// Split current device driver into a rx sink and a tx sink.
-    fn split(&mut self) -> (Self::RxSink, Self::TxSink);
-    /// Mac address of the device.
-    fn mac(&self) -> Mac;
-}
+use futures_util::select_biased;
 
 /// Trait used for parsing a packet of type `Item`.
 trait ProcessPacket<Item> {
@@ -45,11 +31,11 @@ trait ProcessPacket<Item> {
     fn process_packet(&mut self, item: Item) -> Option<Self::Output>;
 }
 
-pub struct NetworkDevice<T: StreamSplit> {
+pub struct NetworkDevice<T: NetworkDriver> {
     /// Tx sink to which we can dispatch packets.
-    tx_sink: <T as StreamSplit>::TxSink,
+    tx_sink: T::TxSink,
     /// Rx sink from which we can receive packets.
-    rx_sink: <T as StreamSplit>::RxSink,
+    rx_sink: Fuse<T::RxSink>,
     /// The mac address of the device being wrapped.
     mac: Mac,
     /// Our ip address,
@@ -58,11 +44,11 @@ pub struct NetworkDevice<T: StreamSplit> {
     arp_translation_table: HashMap<Mac, Ipv4Addr>,
 }
 
-impl<T: StreamSplit> NetworkDevice<T> {
+impl<T: NetworkDriver> NetworkDevice<T> {
     pub fn new(device: &mut T) -> Self {
-        let (rx_sink, tx_sink) = device.split();
+        let (rx_sink, tx_sink) = device.parts();
         Self {
-            rx_sink,
+            rx_sink: rx_sink.fuse(),
             tx_sink,
             mac: device.mac(),
             arp_translation_table: HashMap::new(),
@@ -74,36 +60,55 @@ impl<T: StreamSplit> NetworkDevice<T> {
         self.ip = ip;
     }
 
-    pub async fn process(&mut self) {
-        while let Some(frame) = self.rx_sink.next().await {
-            match frame.dtype() {
-                EtherType::IPv4 => {
-                    let ip_packet = Ipv4::from(frame.data().to_vec()).unwrap();
-                    if let Some(x) = self.process_packet(ip_packet) {
-                        let mut reply = Ether2Frame::new();
-                        reply.set_dst(frame.src());
-                        reply.set_src(self.mac);
-                        reply.set_dtype(EtherType::IPv4);
-                        reply.set_data(x.into_inner());
+    /// Function will run forever grabbing packets from an rx sink and processing them.
+    pub async fn run_forever(&mut self) {
+        loop {
+            let mut rx_item = self.rx_sink.next();
+            let mut tx_item = futures_util::future::pending::<()>();
 
-                        let _ = self.tx_sink.send(reply.into_inner()).await;
-                        let _ = self.tx_sink.flush().await;
+            select_biased! {
+                // We have an incoming packet which needs to be handle.
+                frame = rx_item => {
+                    if let Some(frame) = frame {
+                        self.try_handle_tx(frame).await;
                     }
+                },
+
+                item = tx_item => {
+                    println!("got tx");
                 }
-                EtherType::ARP => {
-                    let arp_packet = ArpPacket::from(frame.data().to_vec()).unwrap();
-                    if let Some(x) = self.process_packet(arp_packet) {
-                        let _ = self.tx_sink.send(x.into_inner()).await;
-                        let _ = self.tx_sink.flush().await;
-                    }
-                }
-                EtherType::Unsupported => {}
             }
+        }
+    }
+
+    async fn try_handle_tx(&mut self, frame: Ether2Frame) {
+        match frame.dtype() {
+            EtherType::IPv4 => {
+                let ip_packet = Ipv4::from(frame.data().to_vec()).unwrap();
+                if let Some(x) = self.process_packet(ip_packet) {
+                    let mut reply = Ether2Frame::new();
+                    reply.set_dst(frame.src());
+                    reply.set_src(self.mac);
+                    reply.set_dtype(EtherType::IPv4);
+                    reply.set_data(x.into_inner());
+
+                    let _ = self.tx_sink.send(reply.into_inner()).await;
+                    let _ = self.tx_sink.flush().await;
+                }
+            }
+            EtherType::ARP => {
+                let arp_packet = ArpPacket::from(frame.data().to_vec()).unwrap();
+                if let Some(x) = self.process_packet(arp_packet) {
+                    let _ = self.tx_sink.send(x.into_inner()).await;
+                    let _ = self.tx_sink.flush().await;
+                }
+            }
+            EtherType::Unsupported => {}
         }
     }
 }
 
-impl<T: StreamSplit> ProcessPacket<ArpPacket> for NetworkDevice<T> {
+impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
     type Output = Ether2Frame;
 
     fn process_packet(&mut self, item: ArpPacket) -> Option<Self::Output> {
@@ -133,7 +138,7 @@ impl<T: StreamSplit> ProcessPacket<ArpPacket> for NetworkDevice<T> {
     }
 }
 
-impl<T: StreamSplit> ProcessPacket<Ipv4> for NetworkDevice<T> {
+impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
     type Output = Ipv4;
 
     fn process_packet(&mut self, item: Ipv4) -> Option<Self::Output> {
@@ -167,7 +172,7 @@ impl<T: StreamSplit> ProcessPacket<Ipv4> for NetworkDevice<T> {
     }
 }
 
-impl<T: StreamSplit> ProcessPacket<Icmp> for NetworkDevice<T> {
+impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
     type Output = Icmp;
 
     fn process_packet(&mut self, item: Icmp) -> Option<Self::Output> {
@@ -177,7 +182,7 @@ impl<T: StreamSplit> ProcessPacket<Icmp> for NetworkDevice<T> {
                 reply.set_packet_type(IcmpType::EchoReply);
                 reply.set_checksum();
                 Some(reply)
-            },
+            }
             _ => None,
         }
     }
