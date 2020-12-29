@@ -69,7 +69,7 @@ impl TryFrom<&[u8]> for Icmp {
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         // We do this atm as we cant create a custom instance of TryFromSliceError
         if data.len() < 8 {
-            let _: [u8; 8] = data.try_into()?;
+            panic!()
         }
 
         let op_type: IcmpType = data[0].into();
@@ -81,7 +81,7 @@ impl TryFrom<&[u8]> for Icmp {
                 checksum: u16::from_be_bytes([data[2], data[3]]),
                 identifier: u16::from_be_bytes([data[4], data[5]]),
                 sequence_number: u16::from_be_bytes([data[6], data[7]]),
-                data: data[7..].to_vec(),
+                data: data[8..].to_vec(),
             },
         })
     }

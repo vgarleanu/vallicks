@@ -387,7 +387,7 @@ impl Rtl8139State {
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
         // If the frame is correctly parsed we push it into the queue, otherwise just skip it
-        let frame = buffer[4..length - 4].try_into().ok();
+        let frame = buffer[4..length].try_into().ok();
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
         // always point to the start of the header.
