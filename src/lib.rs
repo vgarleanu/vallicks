@@ -244,6 +244,7 @@
     unboxed_closures,
     untagged_unions,
     unwind_attributes,
+    unsafe_cell_get_mut,
     vec_into_raw_parts,
     wake_trait
 )]
@@ -264,6 +265,8 @@ pub mod net;
 /// This is the prelude for our kernel which holds the most basic required methods and macros.
 #[prelude_import]
 pub mod prelude;
+/// Holds synchronization primitives.
+pub mod sync;
 
 pub use crate::r#async as async_;
 
