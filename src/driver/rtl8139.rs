@@ -192,8 +192,7 @@ impl RTL8139 {
             // No RX Threshold
             inner
                 .rcr
-                //                .write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
-                .write(0xffffffff);
+                .write(0xf | APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
 
             // Enable Tx on the CR register
             inner.cmd_reg.write(RX_ENABLE | TX_ENABLE);
@@ -399,13 +398,15 @@ impl Rtl8139State {
         // the 4 bytes for the header, we also add 3 for 32 bit alignment and then mask the result.
         self.rx_cursor = (self.rx_cursor + length as usize + 4 + 3) & !3;
 
+        if self.rx_cursor > RX_BUF_LEN {
+            self.rx_cursor -= RX_BUF_LEN
+        }
+
         unsafe {
             // The NIC is then informed of the new cursor. We remove 0x10 to avoid a overflow as
             // the NIC takes the padding into account I think.
             self.capr.write((self.rx_cursor - 0x10) as u16);
         }
-
-        self.rx_cursor = self.rx_cursor % RX_BUF_LEN;
 
         frame
     }

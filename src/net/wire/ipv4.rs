@@ -84,8 +84,9 @@ impl Ipv4 {
     }
 
     pub fn set_len(&mut self) {
-        let data_len = self.0[IPV4_DATA_OFFSET].len();
-        self.0[IPV4_LEN_OFFSET].copy_from_slice(&(IPV4_MIN_VALID_LENGTH + data_len).to_be_bytes());
+        let data_len = self.0[IPV4_DATA_OFFSET].len() as u16;
+        let total_len = IPV4_MIN_VALID_LENGTH as u16 + data_len;
+        self.0[IPV4_LEN_OFFSET].copy_from_slice(&total_len.to_be_bytes());
     }
 
     pub fn set_id(&mut self, id: u16) {
@@ -93,7 +94,7 @@ impl Ipv4 {
     }
 
     pub fn set_flags(&mut self, flags: u8) {
-        self.0[IPV4_FLAGS_OFFSET] |= flags << 5;
+        self.0[IPV4_FLAGS_OFFSET] |= flags;
     }
 
     pub fn set_offset(&mut self, offset: u16) {
@@ -110,7 +111,8 @@ impl Ipv4 {
     }
 
     pub fn set_checksum(&mut self) {
-        todo!();
+        let csum = checksum(self.0.as_ref());
+        self.0[IPV4_CHECKSUM_OFFSET].copy_from_slice(&csum.to_ne_bytes());
     }
 
     pub fn set_sip(&mut self, sip: Ipv4Addr) {
@@ -201,4 +203,24 @@ impl Ipv4 {
     pub fn into_inner(self) -> Vec<u8> {
         self.0
     }
+}
+
+pub fn checksum(data: &[u8]) -> u16 {
+    let mut sum = 0;
+
+    let mut data_iter = data.chunks_exact(2);
+
+    while let Some(x) = data_iter.next() {
+        sum += unsafe { core::mem::transmute::<[u8; 2], u16>(x.try_into().unwrap()) as u32 };
+    }
+
+    if let [item, ..] = data_iter.remainder() {
+        sum += *item as u32;
+    }
+
+    while sum >> 16 != 0 {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+
+    !sum as u16
 }

@@ -153,8 +153,10 @@ impl<T: StreamSplit> ProcessPacket<Ipv4> for NetworkDevice<T> {
                     packet.set_sip(self.ip);
                     packet.set_dip(item.sip());
                     packet.set_id(item.id());
+                    packet.set_flags(0x40);
                     packet.set_data(data);
                     packet.set_len();
+                    packet.set_checksum();
                     packet
                 });
             }
@@ -170,25 +172,25 @@ impl<T: StreamSplit> ProcessPacket<Icmp> for NetworkDevice<T> {
     type Output = Icmp;
 
     fn process_packet(&mut self, item: Icmp) -> Option<Self::Output> {
-        match item {
-            Icmp::Echo {
-                packet_type,
+        let Icmp {
+            packet_type,
+            code,
+            checksum,
+            identifier,
+            sequence_number,
+            data,
+        } = item;
+
+        match packet_type {
+            IcmpType::Echo => Some(Icmp {
+                packet_type: IcmpType::EchoReply,
                 code,
-                checksum,
+                checksum: 0,
                 identifier,
                 sequence_number,
                 data,
-            } => match packet_type {
-                IcmpType::Echo => Some(Icmp::Echo {
-                    packet_type: IcmpType::EchoReply,
-                    code,
-                    checksum,
-                    identifier,
-                    sequence_number,
-                    data,
-                }),
-                _ => None,
-            },
+            }),
+            _ => None,
         }
     }
 }

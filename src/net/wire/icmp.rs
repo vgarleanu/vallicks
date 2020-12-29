@@ -52,15 +52,13 @@ impl From<u8> for IcmpCode {
 /// Our basic ICMP packet struct.
 /// TODO: Better packet structure docs.
 #[derive(Clone, Debug)]
-pub enum Icmp {
-    Echo {
-        packet_type: IcmpType,
-        code: IcmpCode,
-        checksum: u16,
-        identifier: u16,
-        sequence_number: u16,
-        data: Vec<u8>,
-    },
+pub struct Icmp {
+    pub packet_type: IcmpType,
+    pub code: IcmpCode,
+    pub checksum: u16,
+    pub identifier: u16,
+    pub sequence_number: u16,
+    pub data: Vec<u8>,
 }
 
 impl TryFrom<&[u8]> for Icmp {
@@ -75,7 +73,7 @@ impl TryFrom<&[u8]> for Icmp {
         let op_type: IcmpType = data[0].into();
 
         Ok(match op_type {
-            IcmpType::Echo | IcmpType::EchoReply => Self::Echo {
+            IcmpType::Echo | IcmpType::EchoReply => Self {
                 packet_type: op_type,
                 code: data[1].into(),
                 checksum: u16::from_be_bytes([data[2], data[3]]),
@@ -97,25 +95,26 @@ impl TryFrom<Vec<u8>> for Icmp {
 
 impl Into<Vec<u8>> for Icmp {
     fn into(self) -> Vec<u8> {
-        match self {
-            Icmp::Echo {
-                packet_type,
-                code,
-                checksum,
-                identifier,
-                sequence_number,
-                data,
-            } => {
-                let hdr: &[u8] = &[];
+        let Self {
+            packet_type,
+            code,
+            checksum,
+            identifier,
+            sequence_number,
+            data,
+        } = self;
 
-                let op = &[packet_type.raw(), code.raw()];
+        let hdr: &[u8] = &[];
 
-                let checksum = &checksum.to_be_bytes()[..];
-                let id = &identifier.to_be_bytes()[..];
-                let seq = &sequence_number.to_be_bytes()[..];
+        let op = &[packet_type.raw(), code.raw()];
 
-                [op, checksum, id, seq, &data].join(hdr)
-            }
-        }
+        let checksum = &0u16.to_be_bytes()[..];
+        let id = &identifier.to_be_bytes()[..];
+        let seq = &sequence_number.to_be_bytes()[..];
+
+        let old = [op, checksum, id, seq, &data].join(hdr);
+        let csum = &crate::net::wire::ipv4::checksum(&old).to_le_bytes()[..];
+
+        [op, csum, id, seq, &data].join(hdr)
     }
 }
