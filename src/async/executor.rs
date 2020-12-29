@@ -61,8 +61,15 @@ impl Executor {
         }
     }
 
+    fn merge_spawn_queue(&mut self) {
+        while let Some(task) = super::SPAWN_QUEUE.pop() {
+            self.spawn(task);
+        }
+    }
+
     pub fn run(&mut self) {
         loop {
+            self.merge_spawn_queue();
             self.run_ready_tasks();
 
             interrupts::disable();
