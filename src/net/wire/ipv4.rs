@@ -1,11 +1,26 @@
 use crate::net::frames::ipaddr::Ipv4Addr;
 use crate::prelude::*;
-use core::array::TryFromSliceError;
 use core::convert::From;
 use core::convert::Into;
-use core::convert::TryFrom;
 use core::convert::TryInto;
 use core::mem::transmute;
+use core::ops::RangeFrom;
+use core::ops::RangeInclusive;
+
+const IPV4_MIN_VALID_LENGTH: usize = 20;
+const IPV4_VERSION_OFFSET: usize = 0;
+const IPV4_HDR_LEN_OFFSET: usize = 0;
+const IPV4_DSCP_ECN: usize = 1;
+const IPV4_LEN_OFFSET: RangeInclusive<usize> = 2..=3;
+const IPV4_ID_OFFSET: RangeInclusive<usize> = 4..=5;
+const IPV4_FLAGS_OFFSET: usize = 6;
+const IPV4_OFFSET_OFFSET: RangeInclusive<usize> = 6..=7;
+const IPV4_TTL_OFFSET: usize = 8;
+const IPV4_PROTO_OFFSET: usize = 9;
+const IPV4_CHECKSUM_OFFSET: RangeInclusive<usize> = 10..=11;
+const IPV4_SIP_OFFSET: RangeInclusive<usize> = 12..=15;
+const IPV4_DIP_OFFSET: RangeInclusive<usize> = 16..=19;
+const IPV4_DATA_OFFSET: RangeFrom<usize> = 20..;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
@@ -32,178 +47,158 @@ impl From<u8> for Ipv4Proto {
 /// TODO: Use enums where possible
 /// TODO: Unit tests
 #[derive(Clone, Debug)]
-pub struct Ipv4 {
-    /// Version of the packet, can be 4 or 6
-    version: u8,
-    /// The total length of the header
-    hdr_len: u8,
-    /// Dunno
-    dscp: u8,
-    /// Dunno
-    ecn: u8,
-    /// Total length??
-    len: u16,
-    /// ID of the packet
-    id: u16,
-    /// Flags for the packet
-    flags: u8,
-    /// Offset
-    offset: u16,
-    /// Time to live for the packet
-    ttl: u8,
-    /// Protocol ID
-    proto: Ipv4Proto,
-    /// Packet checksum
-    checksum: u16,
-    /// Send IP
-    sip: Ipv4Addr,
-    /// Destination IP
-    dip: Ipv4Addr,
-
-    /// Data extracted after the packet
-    data: Vec<u8>,
-}
+pub struct Ipv4(Vec<u8>);
 
 impl Ipv4 {
     pub fn new_v4() -> Self {
-        Self {
-            version: 4,
-            hdr_len: 5,
-            dscp: 0x00,
-            ecn: 0,
-            len: 0,
-            id: 0,
-            flags: 0x40,
-            offset: 0,
-            ttl: 64,
-            proto: Ipv4Proto::ICMP,
-            checksum: 0,
-            sip: Ipv4Addr::new(127, 0, 0, 1),
-            dip: Ipv4Addr::new(127, 0, 0, 1),
-            data: Vec::new(),
+        let mut new_v4 = Self(vec![0; IPV4_MIN_VALID_LENGTH]);
+        new_v4.set_version(4);
+        new_v4.set_hdr_len(5);
+        new_v4.set_flags(0x40);
+        new_v4.set_ttl(64);
+        new_v4.set_proto(Ipv4Proto::ICMP);
+        new_v4.set_sip(Ipv4Addr::new(127, 0, 0, 1));
+        new_v4.set_dip(Ipv4Addr::new(127, 0, 0, 1));
+
+        new_v4
+    }
+
+    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
+        if data.len() < IPV4_MIN_VALID_LENGTH {
+            return Err(());
         }
+
+        Ok(Self(data))
     }
 
-    pub fn set_data(mut self, data: Vec<u8>) -> Self {
-        self.data = data;
-        self
+    pub fn set_version(&mut self, version: u8) {
+        self.0[IPV4_VERSION_OFFSET] = version << 4 | (self.0[IPV4_HDR_LEN_OFFSET] & 0x0f);
     }
 
-    pub fn set_proto(mut self, proto: Ipv4Proto) -> Self {
-        self.proto = proto;
-        self
+    pub fn set_hdr_len(&mut self, hdr_len: u8) {
+        self.0[IPV4_HDR_LEN_OFFSET] |= hdr_len;
     }
 
-    pub fn set_sip(mut self, sip: Ipv4Addr) -> Self {
-        self.sip = sip;
-        self
+    pub fn set_dscp_ecn(&mut self, dscp_ecn: u8) {
+        self.0[IPV4_DSCP_ECN] = dscp_ecn;
     }
 
-    pub fn set_dip(mut self, dip: Ipv4Addr) -> Self {
-        self.dip = dip;
-        self
+    pub fn set_len(&mut self) {
+        let data_len = self.0[IPV4_DATA_OFFSET].len();
+        self.0[IPV4_LEN_OFFSET].copy_from_slice(&(IPV4_MIN_VALID_LENGTH + data_len).to_be_bytes());
     }
 
-    pub fn set_len(mut self) -> Self {
-        self.len = 20 + self.data.len() as u16;
-        self
+    pub fn set_id(&mut self, id: u16) {
+        self.0[IPV4_ID_OFFSET].copy_from_slice(&id.to_be_bytes());
     }
 
-    pub fn set_id(mut self, id: u16) -> Self {
-        self.id = id;
-        self
+    pub fn set_flags(&mut self, flags: u8) {
+        self.0[IPV4_FLAGS_OFFSET] |= flags << 5;
     }
 
-    /// Method retruns the length of the packet.
+    pub fn set_offset(&mut self, offset: u16) {
+        let value = ((self.flags() as u16) << 8) | offset;
+        self.0[IPV4_OFFSET_OFFSET].copy_from_slice(&value.to_be_bytes());
+    }
+
+    pub fn set_ttl(&mut self, ttl: u8) {
+        self.0[IPV4_TTL_OFFSET] = ttl;
+    }
+
+    pub fn set_proto(&mut self, proto: Ipv4Proto) {
+        self.0[IPV4_PROTO_OFFSET] = proto.raw();
+    }
+
+    pub fn set_checksum(&mut self) {
+        todo!();
+    }
+
+    pub fn set_sip(&mut self, sip: Ipv4Addr) {
+        self.0[IPV4_SIP_OFFSET].copy_from_slice(sip.as_ref());
+    }
+
+    pub fn set_dip(&mut self, dip: Ipv4Addr) {
+        self.0[IPV4_DIP_OFFSET].copy_from_slice(dip.as_ref());
+    }
+
+    pub fn set_data<T: AsRef<[u8]>>(&mut self, data: T) {
+        self.0.truncate(IPV4_MIN_VALID_LENGTH);
+        self.0.extend_from_slice(data.as_ref());
+    }
+
+    pub fn version(&self) -> u8 {
+        self.0[IPV4_VERSION_OFFSET] >> 4
+    }
+
+    pub fn hdr_len(&self) -> u8 {
+        self.0[IPV4_VERSION_OFFSET] & 0x0f
+    }
+
+    pub fn dscp_ecn(&self) -> u8 {
+        self.0[IPV4_DSCP_ECN]
+    }
+
     pub fn len(&self) -> u16 {
-        self.len
-    }
-
-    /// Method returns the protocol id for this packet.
-    pub fn proto(&self) -> Ipv4Proto {
-        self.proto
-    }
-
-    /// Method returns the data extracted after the packet
-    pub fn data(&self) -> Vec<u8> {
-        self.data.clone()
-    }
-
-    pub fn dip(&self) -> Ipv4Addr {
-        self.dip
-    }
-
-    pub fn sip(&self) -> Ipv4Addr {
-        self.sip
+        u16::from_be_bytes(
+            self.0[IPV4_LEN_OFFSET]
+                .try_into()
+                .expect("net: ipv4 got no len"),
+        )
     }
 
     pub fn id(&self) -> u16 {
-        self.id
+        u16::from_be_bytes(
+            self.0[IPV4_ID_OFFSET]
+                .try_into()
+                .expect("net: ipv4 got no id"),
+        )
     }
-}
 
-impl TryFrom<&[u8]> for Ipv4 {
-    type Error = TryFromSliceError;
-
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        // We do this atm as we cant create a custom instance of TryFromSliceError
-        if data.len() < 20 {
-            let _: [u8; 20] = data.try_into()?;
-        }
-
-        Ok(Self {
-            version: data[0] >> 4,
-            hdr_len: (data[0] & 0x0f) * 4,
-            dscp: data[1] >> 2,
-
-            ecn: data[1] & 0x03,
-
-            len: u16::from_be_bytes([data[2], data[3]]),
-            id: u16::from_be_bytes([data[4], data[5]]),
-
-            flags: data[6] >> 5,
-            offset: u16::from_be_bytes([data[6] & 0x1f, data[7]]),
-            ttl: data[8],
-            proto: data[9].into(),
-
-            checksum: u16::from_be_bytes([data[10], data[11]]),
-
-            sip: data[12..16].try_into()?,
-            dip: data[16..20].try_into()?,
-
-            data: data[20..].to_vec(),
-        })
+    pub fn flags(&self) -> u8 {
+        self.0[IPV4_FLAGS_OFFSET] >> 5
     }
-}
 
-impl TryFrom<Vec<u8>> for Ipv4 {
-    type Error = TryFromSliceError;
-
-    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
-        data.as_slice().try_into()
+    pub fn offset(&self) -> u16 {
+        u16::from_be_bytes(
+            self.0[IPV4_OFFSET_OFFSET]
+                .try_into()
+                .expect("net: ipv4 got no offset"),
+        ) & 0x1fff
     }
-}
 
-impl Into<Vec<u8>> for Ipv4 {
-    fn into(self) -> Vec<u8> {
-        let hdr: &[u8] = &[];
+    pub fn ttl(&self) -> u8 {
+        self.0[IPV4_TTL_OFFSET]
+    }
 
-        let ver_dscp = &[
-            (self.version << 4) | self.hdr_len,
-            (self.dscp << 2) | self.ecn,
-        ][..];
+    pub fn proto(&self) -> Ipv4Proto {
+        self.0[IPV4_PROTO_OFFSET].into()
+    }
 
-        let len = &self.len.to_be_bytes()[..];
-        let id = &self.id.to_be_bytes()[..];
-        let flags = &(((self.flags as u16) << 8) | self.offset).to_be_bytes()[..];
-        let ttl_proto = &[self.ttl, self.proto.raw()][..];
-        let checksum = &self.checksum.to_be_bytes()[..];
-        let sip = &self.sip.as_ref()[..];
-        let dip = &self.dip.as_ref()[..];
+    pub fn checksum(&self) -> u16 {
+        u16::from_be_bytes(
+            self.0[IPV4_CHECKSUM_OFFSET]
+                .try_into()
+                .expect("net: ipv4 got no checksum"),
+        )
+    }
 
-        [
-            ver_dscp, len, id, flags, ttl_proto, checksum, sip, dip, &self.data,
-        ]
-        .join(hdr)
+    pub fn sip(&self) -> Ipv4Addr {
+        self.0[IPV4_SIP_OFFSET]
+            .try_into()
+            .expect("net: ipv4 got no sip")
+    }
+
+    pub fn dip(&self) -> Ipv4Addr {
+        self.0[IPV4_DIP_OFFSET]
+            .try_into()
+            .expect("net: ipv4 got no dip")
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.0[IPV4_DATA_OFFSET]
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
     }
 }

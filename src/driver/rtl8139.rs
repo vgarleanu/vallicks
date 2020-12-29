@@ -14,10 +14,12 @@ use crate::{
 };
 use conquer_once::spin::OnceCell;
 
+use alloc::borrow::ToOwned;
 use core::convert::TryInto;
 use crossbeam_queue::SegQueue;
 
 use core::{
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -276,12 +278,14 @@ impl StreamSplit for RTL8139 {
 }
 
 pub struct RxSink {
-    _private: (),
+    _private: PhantomData<()>,
 }
 
 impl RxSink {
     fn new() -> Self {
-        Self { _private: () }
+        Self {
+            _private: PhantomData,
+        }
     }
 }
 
@@ -387,7 +391,7 @@ impl Rtl8139State {
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
         // If the frame is correctly parsed we push it into the queue, otherwise just skip it
-        let frame = buffer[4..length].try_into().ok();
+        let frame = Ether2Frame::from(buffer[4..length].to_vec()).ok();
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
         // always point to the start of the header.

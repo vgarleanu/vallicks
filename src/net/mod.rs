@@ -1,5 +1,3 @@
-/// Our basic network stack
-pub mod stack;
 /// Our packet structures and parsers
 pub mod wire;
 
@@ -80,21 +78,22 @@ impl<T: StreamSplit> NetworkDevice<T> {
         while let Some(frame) = self.rx_sink.next().await {
             match frame.dtype() {
                 EtherType::IPv4 => {
-                    let ip_packet: Ipv4 = frame.frame().try_into().unwrap();
+                    let ip_packet = Ipv4::from(frame.data().to_vec()).unwrap();
                     if let Some(x) = self.process_packet(ip_packet) {
-                        let _ = self.tx_sink
-                            .send(
-                                Ether2Frame::new(frame.dst(), self.mac, EtherType::IPv4, x.into())
-                                    .into(),
-                            )
-                            .await;
+                        let mut reply = Ether2Frame::new();
+                        reply.set_dst(frame.src());
+                        reply.set_src(self.mac);
+                        reply.set_dtype(EtherType::IPv4);
+                        reply.set_data(x.into_inner());
+
+                        let _ = self.tx_sink.send(reply.into_inner()).await;
                         let _ = self.tx_sink.flush().await;
                     }
                 }
                 EtherType::ARP => {
-                    let arp_packet: ArpPacket = frame.frame().try_into().unwrap();
+                    let arp_packet = ArpPacket::from(frame.data().to_vec()).unwrap();
                     if let Some(x) = self.process_packet(arp_packet) {
-                        let _ = self.tx_sink.send(x.into()).await;
+                        let _ = self.tx_sink.send(x.into_inner()).await;
                         let _ = self.tx_sink.flush().await;
                     }
                 }
@@ -108,28 +107,29 @@ impl<T: StreamSplit> ProcessPacket<ArpPacket> for NetworkDevice<T> {
     type Output = Ether2Frame;
 
     fn process_packet(&mut self, item: ArpPacket) -> Option<Self::Output> {
-        if item.tmac != self.mac && item.tip != self.ip {
+        if item.tmac() != self.mac && item.tip() != self.ip {
             return None;
         }
 
-        if item.opcode == ArpOpcode::ArpReply {
-            self.arp_translation_table.insert(item.smac, item.sip);
+        if item.opcode() == ArpOpcode::ArpReply {
+            self.arp_translation_table.insert(item.smac(), item.sip());
             return None;
         }
 
         let mut reply = item.clone();
-        reply.tmac = reply.smac;
-        reply.smac = self.mac;
-        reply.tip = reply.sip;
-        reply.sip = self.ip;
-        reply.opcode = ArpOpcode::ArpReply;
+        reply.set_tmac(reply.smac());
+        reply.set_smac(self.mac);
+        reply.set_tip(reply.sip());
+        reply.set_sip(self.ip);
+        reply.set_opcode(ArpOpcode::ArpReply);
 
-        Some(Ether2Frame::new(
-            item.smac,
-            self.mac,
-            EtherType::ARP,
-            reply.into(),
-        ))
+        let mut reply_frame = Ether2Frame::new();
+        reply_frame.set_dst(item.smac());
+        reply_frame.set_src(self.mac);
+        reply_frame.set_dtype(EtherType::ARP);
+        reply_frame.set_data(reply);
+
+        Some(reply_frame)
     }
 }
 
@@ -147,13 +147,15 @@ impl<T: StreamSplit> ProcessPacket<Ipv4> for NetworkDevice<T> {
                 let packet: Icmp = item.data().try_into().unwrap();
 
                 return self.process_packet(packet).map(|data| {
-                    Ipv4::new_v4()
-                        .set_proto(Ipv4Proto::ICMP)
-                        .set_sip(self.ip)
-                        .set_dip(item.sip())
-                        .set_id(item.id())
-                        .set_data(data.into())
-                        .set_len()
+                    let data: Vec<u8> = data.into();
+                    let mut packet = Ipv4::new_v4();
+                    packet.set_proto(Ipv4Proto::ICMP);
+                    packet.set_sip(self.ip);
+                    packet.set_dip(item.sip());
+                    packet.set_id(item.id());
+                    packet.set_data(data);
+                    packet.set_len();
+                    packet
                 });
             }
             _ => {

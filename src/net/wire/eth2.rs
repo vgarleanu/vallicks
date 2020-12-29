@@ -1,8 +1,21 @@
+//! Zero Copy Ethernet II packet parser.
+
 use crate::net::frames::mac::Mac;
 use crate::prelude::*;
-use core::array::TryFromSliceError;
-use core::convert::{Into, TryFrom, TryInto};
+use core::convert::{Into, TryInto};
 use core::mem::transmute;
+use core::ops::RangeFrom;
+use core::ops::RangeInclusive;
+
+const ETH2_MIN_VALID_SIZE: usize = 14;
+/// Represents the range of 6 bytes pointing to the destination field.
+const ETH2_DST_OFFSET: RangeInclusive<usize> = 0..=5;
+/// Represents the range of 6 bytes pointing to the source field.
+const ETH2_SRC_OFFSET: RangeInclusive<usize> = 6..=11;
+/// Represents the range of bytes responsible for the dtype field.
+const ETH2_DTYPE_OFFSET: RangeInclusive<usize> = 12..=13;
+/// Represents the range of bytes responsible for the data field.
+const ETH2_DATA_OFFSET: RangeFrom<usize> = 14..;
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 #[repr(u16)]
@@ -25,80 +38,78 @@ impl From<u16> for EtherType {
 }
 
 /// Structure represents a basic Ethernet II frame.
-#[derive(Eq, PartialEq, Clone)]
-pub struct Ether2Frame {
-    /// Destination MAC address
-    dst: Mac,
-    /// Source MAC Address
-    src: Mac,
-    /// Data type
-    dtype: EtherType,
-    /// Frame extracted.
-    frame: Vec<u8>,
-}
+#[derive(Eq, PartialEq)]
+pub struct Ether2Frame(Vec<u8>);
 
 impl Ether2Frame {
-    /// Creates a new bare Eth2 frame from the given parameters
-    ///
-    /// # Arguments
-    /// * `dst` - The destination for this packet
-    /// * `src` - The source for this packet
-    /// * `dtype` - The data type for the frame
-    /// * `frame` - The actual frame to send downstream
-    pub fn new(dst: Mac, src: Mac, dtype: EtherType, frame: Vec<u8>) -> Self {
-        Self {
-            dst,
-            src,
-            dtype,
-            frame,
+    /// Creates a new empty ether2 frame.
+    pub fn new() -> Self {
+        Self(vec![0; ETH2_MIN_VALID_SIZE])
+    }
+
+    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
+        if data.len() < ETH2_MIN_VALID_SIZE {
+            return Err(());
         }
+
+        Ok(Self(data))
     }
 
-    /// Returns the dtype of this frame.
-    // TODO: Return enum instead
-    pub fn dtype(&self) -> EtherType {
-        self.dtype
-    }
-
-    /// Returns the dtype of this frame raw
-    pub fn dtype_raw(&self) -> u16 {
-        unsafe { transmute::<EtherType, u16>(self.dtype) }
-    }
-
+    /// Returns the destination field value.
     pub fn dst(&self) -> Mac {
-        self.dst
+        self.0[ETH2_DST_OFFSET].into()
     }
 
-    /// Returns the entire frame.
-    pub fn frame(&self) -> Vec<u8> {
-        self.frame.clone()
+    /// Returns the source of the packet.
+    pub fn src(&self) -> Mac {
+        self.0[ETH2_SRC_OFFSET].into()
+    }
+
+    /// Returns the dtype of the packet.
+    pub fn dtype(&self) -> EtherType {
+        u16::from_be_bytes(
+            self.0[ETH2_DTYPE_OFFSET]
+                .try_into()
+                .expect("net: eth2 got null dtype"),
+        )
+        .into()
+    }
+
+    /// Returns a reference to the data in the packet.
+    pub fn data(&self) -> &[u8] {
+        &self.0[ETH2_DATA_OFFSET]
+    }
+
+    /// Sets the destination field value.
+    pub fn set_dst(&mut self, dst: Mac) {
+        self.0[ETH2_DST_OFFSET].copy_from_slice(dst.as_ref());
+    }
+
+    /// Sets the source field value.
+    pub fn set_src(&mut self, src: Mac) {
+        self.0[ETH2_SRC_OFFSET].copy_from_slice(src.as_ref());
+    }
+
+    /// Sets the dtype field.
+    pub fn set_dtype(&mut self, dtype: EtherType) {
+        self.0[ETH2_DTYPE_OFFSET].copy_from_slice(&dtype.raw().to_be_bytes());
+    }
+
+    /// Sets the data field.
+    pub fn set_data<T: AsRef<[u8]>>(&mut self, data: T) {
+        // remove the old data
+        self.0.truncate(ETH2_MIN_VALID_SIZE);
+        self.0.extend_from_slice(data.as_ref());
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
     }
 }
 
-impl TryFrom<&[u8]> for Ether2Frame {
-    type Error = TryFromSliceError;
-
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self {
-            dst: data[..6].into(),
-            src: data[6..12].into(),
-            dtype: unsafe {
-                transmute::<u16, EtherType>(u16::from_be_bytes(data[12..14].try_into()?))
-            },
-            frame: data[14..].to_vec(),
-        })
-    }
-}
-
-impl Into<Vec<u8>> for Ether2Frame {
-    fn into(self) -> Vec<u8> {
-        let mut bytes: Vec<u8> = Vec::new();
-        bytes.extend_from_slice(self.dst.as_ref());
-        bytes.extend_from_slice(self.src.as_ref());
-        bytes.extend_from_slice(self.dtype_raw().to_be_bytes().as_ref());
-        bytes.extend_from_slice(self.frame.as_ref());
-
-        bytes
+impl AsRef<[u8]> for Ether2Frame {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
@@ -107,7 +118,10 @@ impl core::fmt::Debug for Ether2Frame {
         write!(
             f,
             "Ether2Frame {{ dst: {}, src: {}, dtype: {:?}, frame: {:?} }}",
-            self.dst, self.src, self.dtype, self.frame
+            self.dst(),
+            self.src(),
+            self.dtype(),
+            self.data()
         )
     }
 }
