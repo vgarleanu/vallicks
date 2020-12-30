@@ -42,19 +42,6 @@ impl From<u16> for EtherType {
 pub struct Ether2Frame(Vec<u8>);
 
 impl Ether2Frame {
-    /// Creates a new empty ether2 frame.
-    pub fn new() -> Self {
-        Self(vec![0; ETH2_MIN_VALID_SIZE])
-    }
-
-    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
-        if data.len() < ETH2_MIN_VALID_SIZE {
-            return Err(());
-        }
-
-        Ok(Self(data))
-    }
-
     /// Returns the destination field value.
     pub fn dst(&self) -> Mac {
         self.0[ETH2_DST_OFFSET].into()
@@ -101,8 +88,22 @@ impl Ether2Frame {
         self.0.truncate(ETH2_MIN_VALID_SIZE);
         self.0.extend_from_slice(data.as_ref());
     }
+}
 
-    pub fn into_inner(self) -> Vec<u8> {
+impl super::Packet for Ether2Frame {
+    fn zeroed() -> Self {
+        Self(vec![0; ETH2_MIN_VALID_SIZE])
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Result<Self, ()> {
+        if bytes.len() < ETH2_MIN_VALID_SIZE {
+            return Err(());
+        }
+
+        Ok(Self(bytes))
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
         self.0
     }
 }

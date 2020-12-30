@@ -64,18 +64,6 @@ impl From<u8> for IcmpCode {
 pub struct Icmp(Vec<u8>);
 
 impl Icmp {
-    pub fn new() -> Self {
-        Self(vec![0; 8])
-    }
-
-    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
-        if data.len() < ICMP_ECHO_MIN_SIZE {
-            return Err(());
-        }
-
-        Ok(Self(data))
-    }
-
     pub fn packet_type(&self) -> IcmpType {
         self.0[ICMP_ECHO_PACKET_TYPE].into()
     }
@@ -142,6 +130,24 @@ impl Icmp {
     }
 
     pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl super::Packet for Icmp {
+    fn zeroed() -> Self {
+        Self(vec![0; ICMP_ECHO_MIN_SIZE])
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Result<Self, ()> {
+        if bytes.len() < ICMP_ECHO_MIN_SIZE {
+            return Err(());
+        }
+
+        Ok(Self(bytes))
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
         self.0
     }
 }

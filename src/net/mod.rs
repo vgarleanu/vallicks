@@ -11,6 +11,8 @@ use crate::net::wire::icmp::{Icmp, IcmpType};
 use crate::net::wire::ipaddr::Ipv4Addr;
 use crate::net::wire::ipv4::{Ipv4, Ipv4Proto};
 use crate::net::wire::mac::Mac;
+use crate::net::wire::tcp::Tcp;
+use crate::net::wire::Packet;
 
 use crate::driver::NetworkDriver;
 use crate::sync::mpsc::*;
@@ -23,14 +25,20 @@ use futures_util::stream::StreamExt;
 use futures_util::future::FutureExt;
 use futures_util::future;
 
-/// Trait used for parsing a packet of type `Item`.
+
+/// Trait used for parsing a packet of type `Item`. The aim of this is that in the end our network
+/// stack visually looks like a state machine as well, with the idea that packets go down the
+/// callstack in an obvious fashion.
 trait ProcessPacket<Item> {
     /// Output packet.
-    type Output;
+    type Output: Packet;
+    /// Represents a context that gets passed down to packet handler. This context is essentially the
+    /// ethernet 2 frame, but in some cases could be the ipv4 packet.
+    type Context: Packet;
 
     /// Process packet of type `Item`. This method can return an Option depending on whether we
     /// want to send a packet as a reply or not.
-    fn process_packet(&mut self, item: Item) -> Option<Self::Output>;
+    fn handle_packet(&mut self, item: Item, ctx: Self::Context) -> Option<Self::Output>;
 }
 
 pub struct NetworkDevice<T: NetworkDriver> {
@@ -81,10 +89,13 @@ impl<T: NetworkDriver> NetworkDevice<T> {
 
             match future::select(rx_item, tx_item).await {
                 future::Either::Left((item, _)) => if let Some(frame) = item {
-                    self.try_handle_rx(frame).await;
+                    if let Some(packet) = self.handle_packet(frame, ()) {
+                        let _ = self.tx_sink.send(packet.into_bytes()).await;
+                        let _ = self.tx_sink.flush().await;
+                    }
                 },
                 future::Either::Right((item, _)) => if let Some(frame) = item {
-                    if let Err(tx_send_err) = self.tx_sink.send(frame.into_inner()).await {
+                    if let Err(tx_send_err) = self.tx_sink.send(frame.into_bytes()).await {
                         println!("net: tx_send_err {:?}", tx_send_err);
                     }
 
@@ -95,38 +106,43 @@ impl<T: NetworkDriver> NetworkDevice<T> {
             }
         }
     }
+}
 
-    async fn try_handle_rx(&mut self, frame: Ether2Frame) {
-        match frame.dtype() {
+impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
+    type Output = Ether2Frame;
+    type Context = ();
+
+    fn handle_packet(&mut self, item: Ether2Frame, ctx: Self::Context) -> Option<Self::Output> {
+        match item.dtype() {
             EtherType::IPv4 => {
-                let ip_packet = Ipv4::from(frame.data().to_vec()).unwrap();
-                if let Some(x) = self.process_packet(ip_packet) {
-                    let mut reply = Ether2Frame::new();
-                    reply.set_dst(frame.src());
+                let ip_packet = Ipv4::from_bytes(item.data().to_vec()).unwrap();
+                let src = item.src();
+                if let Some(x) = self.handle_packet(ip_packet, item) {
+                    let mut reply = Ether2Frame::zeroed();
+                    reply.set_dst(src);
                     reply.set_src(self.mac);
                     reply.set_dtype(EtherType::IPv4);
                     reply.set_data(x.into_inner());
 
-                    let _ = self.tx_sink.send(reply.into_inner()).await;
-                    let _ = self.tx_sink.flush().await;
+                    return Some(reply);
                 }
             }
             EtherType::ARP => {
-                let arp_packet = ArpPacket::from(frame.data().to_vec()).unwrap();
-                if let Some(x) = self.process_packet(arp_packet) {
-                    let _ = self.tx_sink.send(x.into_inner()).await;
-                    let _ = self.tx_sink.flush().await;
-                }
+                let arp_packet = ArpPacket::from(item.data().to_vec()).unwrap();
+                return self.handle_packet(arp_packet, item);
             }
             EtherType::Unsupported => {}
         }
+
+        None
     }
 }
 
 impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
     type Output = Ether2Frame;
+    type Context = Ether2Frame;
 
-    fn process_packet(&mut self, item: ArpPacket) -> Option<Self::Output> {
+    fn handle_packet(&mut self, item: ArpPacket, ctx: Self::Context) -> Option<Self::Output> {
         if item.tmac() != self.mac && item.tip() != self.ip {
             return None;
         }
@@ -143,7 +159,7 @@ impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
         reply.set_sip(self.ip);
         reply.set_opcode(ArpOpcode::ArpReply);
 
-        let mut reply_frame = Ether2Frame::new();
+        let mut reply_frame = Ether2Frame::zeroed();
         reply_frame.set_dst(item.smac());
         reply_frame.set_src(self.mac);
         reply_frame.set_dtype(EtherType::ARP);
@@ -155,27 +171,49 @@ impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
 
 impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
     type Output = Ipv4;
+    type Context = Ether2Frame;
 
-    fn process_packet(&mut self, item: Ipv4) -> Option<Self::Output> {
+    fn handle_packet(&mut self, item: Ipv4, ctx: Self::Context) -> Option<Self::Output> {
         // packet is malformed or not intended for us.
         if item.dip() != self.ip {
             return None;
         }
 
+        let sip = item.sip();
+        let id = item.id();
+
         match item.proto() {
             Ipv4Proto::ICMP => {
-                let packet = Icmp::from(item.data().to_vec()).ok()?;
+                let packet = Icmp::from_bytes(item.data().to_vec()).ok()?;
 
-                return self.process_packet(packet).map(|data| {
-                    let mut packet = Ipv4::new_v4();
+
+                return self.handle_packet(packet, item).map(|data| {
+                    let mut packet = Ipv4::zeroed();
                     packet.set_proto(Ipv4Proto::ICMP);
                     packet.set_sip(self.ip);
-                    packet.set_dip(item.sip());
-                    packet.set_id(item.id());
+                    packet.set_dip(sip);
+                    packet.set_id(id);
                     packet.set_flags(0x40);
                     packet.set_data(data.into_inner());
                     packet.set_len();
                     packet.set_checksum();
+                    packet
+                });
+            }
+            Ipv4Proto::TCP => {
+                let packet = Tcp::from_bytes(item.data().to_vec()).ok()?;
+
+                return self.handle_packet(packet, item).map(|data| {
+                    let mut packet = Ipv4::zeroed();
+                    packet.set_proto(Ipv4Proto::TCP);
+                    packet.set_sip(self.ip);
+                    packet.set_dip(sip);
+                    packet.set_id(id);
+                    packet.set_flags(0x40);
+                    packet.set_data(data.into_inner());
+                    packet.set_len();
+                    packet.set_checksum();
+
                     packet
                 });
             }
@@ -189,8 +227,9 @@ impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
 
 impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
     type Output = Icmp;
+    type Context = Ipv4;
 
-    fn process_packet(&mut self, item: Icmp) -> Option<Self::Output> {
+    fn handle_packet(&mut self, item: Icmp, ctx: Self::Context) -> Option<Self::Output> {
         match item.packet_type() {
             IcmpType::Echo => {
                 let mut reply = item.clone();
@@ -200,5 +239,30 @@ impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
             }
             _ => None,
         }
+    }
+}
+
+use crate::net::wire::tcp::TcpFlag;
+
+impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
+    type Output = Tcp;
+    type Context = Ipv4;
+
+    fn handle_packet(&mut self, item: Tcp, ctx: Self::Context) -> Option<Self::Output> {
+        match item.flaglist().as_slice() {
+            [TcpFlag::SYN, ..] => {
+                // first part of the handshake
+                let mut packet = item.clone();
+                packet.set_dst(item.src_port());
+                packet.set_src(item.dst_port());
+                packet.set_flags(&[TcpFlag::SYN, TcpFlag::ACK]);
+                packet.set_seq(300); //replace this with a random num at runtime
+                packet.set_ack(item.seq_num() + 1);
+
+                return Some(packet);
+            },
+            _ => {}
+        }
+        None
     }
 }

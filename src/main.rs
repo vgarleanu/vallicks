@@ -33,13 +33,6 @@ async fn send_packets() {
             netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
             let mut sender = netdev.get_sender();
             spawn(async move { netdev.run_forever().await });
-            spawn(async move {
-                let mut sender = sender;
-                loop {
-                    After::new(1000).await; // run after 1000ms
-                    sender.send(Ether2Frame::new());
-                }
-            });
         }
     }
 }

@@ -50,27 +50,6 @@ impl From<u8> for Ipv4Proto {
 pub struct Ipv4(Vec<u8>);
 
 impl Ipv4 {
-    pub fn new_v4() -> Self {
-        let mut new_v4 = Self(vec![0; IPV4_MIN_VALID_LENGTH]);
-        new_v4.set_version(4);
-        new_v4.set_hdr_len(5);
-        new_v4.set_flags(0x40);
-        new_v4.set_ttl(64);
-        new_v4.set_proto(Ipv4Proto::ICMP);
-        new_v4.set_sip(Ipv4Addr::new(127, 0, 0, 1));
-        new_v4.set_dip(Ipv4Addr::new(127, 0, 0, 1));
-
-        new_v4
-    }
-
-    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
-        if data.len() < IPV4_MIN_VALID_LENGTH {
-            return Err(());
-        }
-
-        Ok(Self(data))
-    }
-
     pub fn set_version(&mut self, version: u8) {
         self.0[IPV4_VERSION_OFFSET] = version << 4 | (self.0[IPV4_HDR_LEN_OFFSET] & 0x0f);
     }
@@ -201,6 +180,33 @@ impl Ipv4 {
     }
 
     pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl super::Packet for Ipv4 {
+    fn zeroed() -> Self {
+        let mut new_v4 = Self(vec![0; IPV4_MIN_VALID_LENGTH]);
+        new_v4.set_version(4);
+        new_v4.set_hdr_len(5);
+        new_v4.set_flags(0x40);
+        new_v4.set_ttl(64);
+        new_v4.set_proto(Ipv4Proto::ICMP);
+        new_v4.set_sip(Ipv4Addr::new(127, 0, 0, 1));
+        new_v4.set_dip(Ipv4Addr::new(127, 0, 0, 1));
+
+        new_v4
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Result<Self, ()> {
+        if bytes.len() < IPV4_MIN_VALID_LENGTH {
+            return Err(());
+        }
+
+        Ok(Self(bytes))
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
         self.0
     }
 }

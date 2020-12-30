@@ -241,6 +241,7 @@
     try_reserve,
     try_trait,
     type_alias_impl_trait,
+    type_ascription,
     unboxed_closures,
     untagged_unions,
     unwind_attributes,
