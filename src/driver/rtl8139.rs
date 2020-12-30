@@ -9,8 +9,9 @@ use crate::arch::pci::Device;
 
 use crate::driver::Driver;
 use crate::driver::NetworkDriver;
-use crate::net::frames::eth2::Ether2Frame;
-use crate::net::frames::mac::Mac;
+use crate::net::wire::eth2::Ether2Frame;
+use crate::net::wire::mac::Mac;
+use crate::net::wire::Packet;
 
 use crate::prelude::sync::Arc;
 use crate::prelude::sync::RwLock;
@@ -419,7 +420,7 @@ impl Rtl8139State {
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
         // If the frame is correctly parsed we push it into the queue, otherwise just skip it
-        let frame = Ether2Frame::from(buffer[4..length].to_vec()).ok();
+        let frame = Ether2Frame::from_bytes(buffer[4..length].to_vec()).ok();
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
         // always point to the start of the header.

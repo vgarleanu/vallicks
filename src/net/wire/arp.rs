@@ -1,3 +1,4 @@
+use crate::net::wire::Packet;
 use crate::net::wire::{eth2::EtherType, ipaddr::Ipv4Addr, mac::Mac};
 use crate::prelude::*;
 use core::convert::TryInto;
@@ -50,18 +51,6 @@ pub struct ArpPacket(Vec<u8>);
 
 // TODO: Make this generic to support `From::from` on `&mut [u8]` as well as `Vec<u8>`
 impl ArpPacket {
-    pub fn new() -> Self {
-        Self(vec![0; MIN_ARP_LEN])
-    }
-
-    pub fn from(data: Vec<u8>) -> Result<Self, ()> {
-        if data.len() < MIN_ARP_LEN {
-            return Err(());
-        }
-
-        Ok(Self(data))
-    }
-
     pub fn hw_type(&self) -> u16 {
         u16::from_be_bytes(self.0[ARP_HW_TYPE].try_into().expect("net: got no hw_type"))
     }
@@ -140,6 +129,24 @@ impl ArpPacket {
         <T as SliceIndex<[u8]>>::Output: AsMut<[u8]>,
     {
         self.0[range].as_mut().copy_from_slice(data);
+    }
+}
+
+impl super::Packet for ArpPacket {
+    fn zeroed() -> Self {
+        Self(vec![0; MIN_ARP_LEN])
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Result<Self, ()> {
+        if bytes.len() < MIN_ARP_LEN {
+            return Err(());
+        }
+
+        Ok(Self(bytes))
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        self.0
     }
 }
 
