@@ -184,11 +184,11 @@ impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
         let (data, packet_type) = match item.proto() {
             Ipv4Proto::ICMP => {
                 let packet = Icmp::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item)?.into_inner(), Ipv4Proto::ICMP)
+                (self.handle_packet(packet, &item)?.into_bytes(), Ipv4Proto::ICMP)
             }
             Ipv4Proto::TCP => {
                 let packet = Tcp::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item)?.into_inner(), Ipv4Proto::TCP)
+                (self.handle_packet(packet, &item)?.into_bytes(), Ipv4Proto::TCP)
             }
             _ => {
                 return None
@@ -230,7 +230,7 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
     type Output = Tcp;
     type Context = Ipv4;
 
-    fn handle_packet(&mut self, item: Tcp, _: &Self::Context) -> Option<Self::Output> {
+    fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
         match item.flaglist().as_slice() {
             [TcpFlag::SYN, ..] => {
                 // first part of the handshake
@@ -238,8 +238,9 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
                 packet.set_dst(item.src_port());
                 packet.set_src(item.dst_port());
                 packet.set_flags(&[TcpFlag::SYN, TcpFlag::ACK]);
-                packet.set_seq(300); //replace this with a random num at runtime
+                packet.set_seq(item.seq_num() + 123); //replace this with a random num at runtime
                 packet.set_ack(item.seq_num() + 1);
+                packet.set_checksum(ctx.sip(),ctx.dip());
 
                 return Some(packet);
             },

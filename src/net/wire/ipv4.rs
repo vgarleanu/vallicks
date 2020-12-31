@@ -236,5 +236,5 @@ pub fn u32_to_u16(mut sum: u32) -> u16 {
         sum = (sum & 0xffff) + (sum >> 16);
     }
 
-    !sum as u16
+    (!sum & 0xffff) as u16
 }

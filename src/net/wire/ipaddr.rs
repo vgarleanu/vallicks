@@ -15,6 +15,10 @@ impl Ipv4Addr {
             inner: [a, b, c, d],
         }
     }
+
+    pub fn raw(&self) -> u32 {
+        unsafe { core::mem::transmute::<[u8; 4], u32>(self.inner) }
+    }
 }
 
 impl TryFrom<&[u8]> for Ipv4Addr {

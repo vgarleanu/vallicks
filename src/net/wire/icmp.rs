@@ -112,7 +112,7 @@ impl Icmp {
         // set it to 0
         self.0[ICMP_ECHO_CSUM].copy_from_slice(&0u16.to_le_bytes());
 
-        let csum = crate::net::wire::ipv4::checksum(&self.0);
+        let csum = super::ipv4::u32_to_u16(super::ipv4::checksum(&self.0));
         self.0[ICMP_ECHO_CSUM].copy_from_slice(&csum.to_le_bytes());
     }
 
@@ -127,10 +127,6 @@ impl Icmp {
     pub fn set_data<T: AsRef<[u8]>>(&mut self, data: T) {
         self.0.truncate(ICMP_ECHO_MIN_SIZE);
         self.0.extend_from_slice(data.as_ref());
-    }
-
-    pub fn into_inner(self) -> Vec<u8> {
-        self.0
     }
 }
 
