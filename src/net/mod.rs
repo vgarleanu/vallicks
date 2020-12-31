@@ -10,6 +10,7 @@ use crate::net::wire::eth2::{Ether2Frame, EtherType};
 use crate::net::wire::icmp::{Icmp, IcmpType};
 use crate::net::wire::ipaddr::Ipv4Addr;
 use crate::net::wire::ipv4::{Ipv4, Ipv4Proto};
+use crate::net::wire::tcp::TcpFlag;
 use crate::net::wire::mac::Mac;
 use crate::net::wire::tcp::Tcp;
 use crate::net::wire::Packet;
@@ -212,7 +213,7 @@ impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
     type Output = Icmp;
     type Context = Ipv4;
 
-    fn handle_packet(&mut self, item: Icmp, ctx: &Self::Context) -> Option<Self::Output> {
+    fn handle_packet(&mut self, item: Icmp, _: &Self::Context) -> Option<Self::Output> {
         match item.packet_type() {
             IcmpType::Echo => {
                 let mut reply = item.clone();
@@ -225,13 +226,11 @@ impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
     }
 }
 
-use crate::net::wire::tcp::TcpFlag;
-
 impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
     type Output = Tcp;
     type Context = Ipv4;
 
-    fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
+    fn handle_packet(&mut self, item: Tcp, _: &Self::Context) -> Option<Self::Output> {
         match item.flaglist().as_slice() {
             [TcpFlag::SYN, ..] => {
                 // first part of the handshake

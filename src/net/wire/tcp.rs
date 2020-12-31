@@ -16,6 +16,20 @@ const TCP_URGENT_PTR: RangeInclusive<usize> = 18..=19;
 const TCP_OPTIONS: RangeInclusive<usize> = 20..=22;
 const TCP_DATA: RangeFrom<usize> = 24..;
 
+pub enum TcpStates {
+    TCP_LISTEN,
+    TCP_SYNSENT,
+    TCP_SYN_RECEIVED,
+    TCP_ESTABLISHED,
+    TCP_FIN_WAIT_1,
+    TCP_FIN_WAIT_2,
+    TCP_CLOSE,
+    TCP_CLOSE_WAIT,
+    TCP_CLOSING,
+    TCP_LAST_ACK,
+    TCP_TIME_WAIT,
+}
+
 #[derive(Clone, Copy)]
 pub enum TcpFlag {
     URG,
