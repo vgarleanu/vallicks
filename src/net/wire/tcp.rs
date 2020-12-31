@@ -1,3 +1,4 @@
+use super::ipaddr::Ipv4Addr;
 use crate::prelude::*;
 use core::convert::TryInto;
 use core::ops::RangeFrom;
@@ -193,8 +194,13 @@ impl Tcp {
         )
     }
 
-    pub fn into_inner(self) -> Vec<u8> {
-        self.0
+    pub fn set_checksum(&mut self, src: Ipv4Addr, dst: Ipv4Addr) {
+        self.0[TCP_CSUM].copy_from_slice(&0u16.to_be_bytes());
+
+        let mut sum = src.raw() + dst.raw() + (self.0.len() as u32).to_be() + 0x06u32.to_be();
+        sum += super::ipv4::checksum(self.0.as_ref());
+
+        self.0[TCP_CSUM].copy_from_slice(&super::ipv4::u32_to_u16(sum).to_ne_bytes());
     }
 }
 
