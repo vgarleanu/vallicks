@@ -20,6 +20,7 @@ const IPV4_PROTO_OFFSET: usize = 9;
 const IPV4_CHECKSUM_OFFSET: RangeInclusive<usize> = 10..=11;
 const IPV4_SIP_OFFSET: RangeInclusive<usize> = 12..=15;
 const IPV4_DIP_OFFSET: RangeInclusive<usize> = 16..=19;
+const IPV4_HEADER_OFFSET: RangeInclusive<usize> = 0..=19;
 const IPV4_DATA_OFFSET: RangeFrom<usize> = 20..;
 
 #[derive(Clone, Copy, Debug)]
@@ -90,7 +91,7 @@ impl Ipv4 {
     }
 
     pub fn set_checksum(&mut self) {
-        let csum = checksum(self.0.as_ref());
+        let csum = u32_to_u16(checksum(&self.0[IPV4_HEADER_OFFSET]));
         self.0[IPV4_CHECKSUM_OFFSET].copy_from_slice(&csum.to_ne_bytes());
     }
 
@@ -179,8 +180,8 @@ impl Ipv4 {
         &self.0[IPV4_DATA_OFFSET]
     }
 
-    pub fn into_inner(self) -> Vec<u8> {
-        self.0
+    pub fn header(&self) -> &[u8] {
+        &self.0[IPV4_HEADER_OFFSET]
     }
 }
 
@@ -203,7 +204,10 @@ impl super::Packet for Ipv4 {
             return Err(());
         }
 
-        Ok(Self(bytes))
+        let mut this = Self(bytes);
+        this.0[IPV4_CHECKSUM_OFFSET].copy_from_slice(&[0, 0]);
+
+        Ok(this)
     }
 
     fn into_bytes(self) -> Vec<u8> {
@@ -211,19 +215,23 @@ impl super::Packet for Ipv4 {
     }
 }
 
-pub fn checksum(data: &[u8]) -> u16 {
+pub fn checksum(data: &[u8]) -> u32 {
     let mut sum = 0;
 
     let mut data_iter = data.chunks_exact(2);
 
     while let Some(x) = data_iter.next() {
-        sum += unsafe { core::mem::transmute::<[u8; 2], u16>(x.try_into().unwrap()) as u32 };
+        sum += u16::from_le_bytes(x.try_into().unwrap()) as u32;
     }
 
     if let [item, ..] = data_iter.remainder() {
         sum += *item as u32;
     }
 
+    sum
+}
+
+pub fn u32_to_u16(mut sum: u32) -> u16 {
     while sum >> 16 != 0 {
         sum = (sum & 0xffff) + (sum >> 16);
     }
