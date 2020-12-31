@@ -244,6 +244,9 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
 
                 return Some(packet);
             },
+            [TcpFlag::FIN, TcpFlag::ACK, ..] => {
+                return None;
+            }
             _ => {}
         }
         None
