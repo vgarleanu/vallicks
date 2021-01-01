@@ -15,7 +15,7 @@ const TCP_WINDOW: RangeInclusive<usize> = 14..=15;
 const TCP_CSUM: RangeInclusive<usize> = 16..=17;
 const TCP_URGENT_PTR: RangeInclusive<usize> = 18..=19;
 const TCP_OPTIONS: RangeInclusive<usize> = 20..=22;
-const TCP_DATA: RangeFrom<usize> = 24..;
+const TCP_DATA: RangeFrom<usize> = 32..;
 
 pub enum TcpStates {
     TCP_LISTEN,
@@ -170,6 +170,10 @@ impl Tcp {
         }
     }
 
+    pub fn clear_flags(&mut self) {
+        self.0[TCP_FLAGS] = 0;
+    }
+
     pub fn window(&self) -> u16 {
         u16::from_be_bytes(
             self.0[TCP_WINDOW]
@@ -201,6 +205,14 @@ impl Tcp {
         sum += super::ipv4::checksum(self.0.as_ref());
 
         self.0[TCP_CSUM].copy_from_slice(&super::ipv4::u32_to_u16(sum).to_ne_bytes());
+    }
+
+    pub fn dlen(&self) -> usize {
+        self.0[TCP_DATA].len()
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.0[TCP_DATA]
     }
 }
 

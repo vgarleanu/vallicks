@@ -1,5 +1,7 @@
 /// Our packet structures and parsers
 pub mod wire;
+/// Our tcp stack implementation
+pub mod tcp;
 
 pub use crate::net::wire as frames;
 
@@ -18,6 +20,7 @@ use crate::net::wire::Packet;
 use crate::driver::NetworkDriver;
 use crate::sync::mpsc::*;
 
+use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 
 use futures_util::sink::SinkExt;
@@ -26,6 +29,7 @@ use futures_util::stream::StreamExt;
 use futures_util::future::FutureExt;
 use futures_util::future;
 
+use crate::net::tcp::*;
 
 /// Trait used for parsing a packet of type `Item`. The aim of this is that in the end our network
 /// stack visually looks like a state machine as well, with the idea that packets go down the
@@ -57,6 +61,10 @@ pub struct NetworkDevice<T: NetworkDriver> {
     tx_queue: Option<UnboundedReceiver<Ether2Frame>>,
     /// Tx queue sender
     tx_queue_sender: UnboundedSender<Ether2Frame>,
+    
+    // ** TCP STACK STARTS HERE **
+    /// TCP Connection map.
+    tcp_map: ConnectionMap,
 }
 
 impl<T: NetworkDriver> NetworkDevice<T> {
@@ -75,7 +83,8 @@ impl<T: NetworkDriver> NetworkDevice<T> {
             mac: device.mac(),
             arp_translation_table: HashMap::new(),
             ip: Ipv4Addr::new(127, 0, 0, 1),
-            tx_queue: Some(tx_queue), tx_queue_sender
+            tx_queue: Some(tx_queue), tx_queue_sender,
+            tcp_map: ConnectionMap::new(),
         }
     }
 
@@ -231,24 +240,17 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
     type Context = Ipv4;
 
     fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
-        match item.flaglist().as_slice() {
-            [TcpFlag::SYN, ..] => {
-                // first part of the handshake
-                let mut packet = item.clone();
-                packet.set_dst(item.src_port());
-                packet.set_src(item.dst_port());
-                packet.set_flags(&[TcpFlag::SYN, TcpFlag::ACK]);
-                packet.set_seq(item.seq_num() + 123); //replace this with a random num at runtime
-                packet.set_ack(item.seq_num() + 1);
-                packet.set_checksum(ctx.sip(),ctx.dip());
+        let conn_key = (ctx.sip(), item.src_port(), ctx.dip(), item.dst_port());
 
-                return Some(packet);
+        match self.tcp_map.entry(conn_key) {
+            Entry::Occupied(mut entry) => {
+                return entry.get_mut().handle_packet(item, ctx);
             },
-            [TcpFlag::FIN, TcpFlag::ACK, ..] => {
-                return None;
-            }
-            _ => {}
+            Entry::Vacant(entry) => {
+                let (connection, tx) = TcpConnection::accept(item, ctx)?;
+                entry.insert(connection);
+                return Some(tx);
+            },
         }
-        None
     }
 }

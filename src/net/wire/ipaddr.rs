@@ -2,7 +2,7 @@ use core::array::TryFromSliceError;
 use core::convert::{AsRef, From, TryFrom, TryInto};
 
 /// Struct represents a IP version 4 address
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Ipv4Addr {
     /// Inner bytes of the IP address
     inner: [u8; 4],
