@@ -41,10 +41,28 @@ pub struct TcpConnection {
 }
 
 impl TcpConnection {
-    pub fn accept(tcp: Tcp, ip: &Ipv4) -> Option<(Self, Tcp)> {
+    pub fn accept(tcp: Tcp, ip: &Ipv4) -> Result<(Self, Tcp), Option<Tcp>> {
+        // First check for a RST
+        if tcp.is_rst() {
+            return Err(None);
+        }
+
+        // if we get an ack we must send a RST RFC793 p.65
+        if tcp.is_ack() {
+            let mut packet = Tcp::zeroed();
+            packet.set_dst(tcp.src());
+            packet.set_src(tcp.dst());
+            packet.set_flags(&[TcpFlag::RST]);
+            packet.set_seq(tcp.ack());
+            packet.set_hlen(20);
+            packet.set_checksum(ip.sip(), ip.dip());
+
+            return Err(Some(packet));
+        }
+
         // only SYN requests count as valid handshake packets.
         if !tcp.is_syn() {
-            return None;
+            return Err(None);
         }
 
         let this = Self {
@@ -56,28 +74,29 @@ impl TcpConnection {
             snd_up: false,
             snd_wl1: 0,
             snd_wl2: 0,
-            rcv_irs: tcp.seq_num(),
-            rcv_nxt: tcp.seq_num() + 1,
+            rcv_irs: tcp.seq(),
+            rcv_nxt: tcp.seq() + 1,
             rcv_wnd: tcp.window(),
             rcv_up: false,
-            quad: (ip.sip(), tcp.src_port(), ip.dip(), tcp.dst_port()),
+            quad: (ip.sip(), tcp.src(), ip.dip(), tcp.dst()),
         };
 
-        let mut packet = tcp.clone();
+        let mut packet = Tcp::zeroed();
 
         packet.set_dst(this.quad.1);
         packet.set_src(this.quad.3);
         packet.set_flags(&[TcpFlag::SYN, TcpFlag::ACK]);
-        packet.set_seq(this.snd_nxt); //replace this with a random num at runtime
+        packet.set_seq(this.snd_iss); //replace this with a random num at runtime
         packet.set_ack(this.rcv_nxt);
+        packet.set_hlen(20);
         packet.set_checksum(ip.sip(), ip.dip());
 
-        Some((this, packet))
+        Ok((this, packet))
     }
 
     pub fn handle_packet(&mut self, tcp: Tcp, ip: &Ipv4) -> Option<Tcp> {
         // check validity of the ack num
-        let ackn = tcp.ack_num();
+        let ackn = tcp.ack();
 
         if !(self.snd_una.wrapping_sub(ackn) > (1 << 31)
             && ackn.wrapping_sub(self.snd_nxt.wrapping_add(1)) > (1 << 31))
@@ -88,6 +107,49 @@ impl TcpConnection {
             }
             return None;
         }
+
+        // SYN-SENT state
+        if let TcpStates::TCP_SYNSENT = self.state {
+            if tcp.is_ack() {
+                if tcp.ack() <= self.snd_iss || self.snd_nxt < tcp.ack() {
+                    return Some(self.reset(tcp, ip)); // <SEQ=SEG.ACK>
+                }
+
+                // use wrapping comparations
+                if self.snd_una <= tcp.ack() && tcp.ack() <= self.snd_nxt {
+                    if tcp.is_rst() {
+                        // TODO: Drop segment and close connection
+                        return None;
+                    }
+                }
+
+                // TODO: 3rd check the security and precedence
+            }
+
+            // 4th step, check the syn bit
+            if tcp.is_syn() {
+                self.rcv_nxt = tcp.seq() + 1;
+                self.rcv_irs = tcp.seq();
+
+                // TODO: SND.UNA should be advanced to equal SEG.ACK (if there
+                // is an ACK), and any segments on the retransmission queue which
+                // are thereby acknowledged should be removed
+                if tcp.is_ack() {
+                    self.snd_una += 1
+                }
+
+                // our SYN has been ack'd
+                if self.snd_una > self.snd_iss {
+                    self.state = TcpStates::TCP_ESTABLISHED;
+                    return Some(self.ack(tcp, ip)); // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+                }
+            }
+
+            if !tcp.is_syn() || !tcp.is_rst() {
+                return None;
+            }
+        }
+        // TODO: p.69 check the seq number again??
 
         // Process ACKs
         if tcp.is_ack() {
@@ -102,12 +164,12 @@ impl TcpConnection {
                 | TcpStates::TCP_CLOSING
                 | TcpStates::TCP_LAST_ACK => {
                     // TODO: Clean retransmission queue of packets that have been ack'd
-                    if tcp.ack_num() < self.snd_una {
+                    if tcp.ack() < self.snd_una {
                         // got a duplicate ack. safe to ignore
                         return None;
                     }
 
-                    if tcp.ack_num() > self.snd_nxt {
+                    if tcp.ack() > self.snd_nxt {
                         // if we got a ack for something we havent sent yet we just drop the packet
                         return None;
                     }
@@ -122,7 +184,7 @@ impl TcpConnection {
             | TcpStates::TCP_FIN_WAIT_1
             | TcpStates::TCP_FIN_WAIT_2 = self.state
             {
-                if tcp.seq_num() == self.rcv_nxt {
+                if tcp.seq() == self.rcv_nxt {
                     self.rcv_nxt += tcp.len() as u32;
                     println!("{}", String::from_utf8_lossy(tcp.data()));
                     return Some(self.ack(tcp, ip)); // send our ack

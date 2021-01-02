@@ -58,7 +58,7 @@ impl Into<u8> for TcpFlag {
 pub struct Tcp(Vec<u8>);
 
 impl Tcp {
-    pub fn src_port(&self) -> u16 {
+    pub fn src(&self) -> u16 {
         u16::from_be_bytes(
             self.0[TCP_SRC_PORT]
                 .try_into()
@@ -70,7 +70,7 @@ impl Tcp {
         self.0[TCP_SRC_PORT].copy_from_slice(&src.to_be_bytes());
     }
 
-    pub fn dst_port(&self) -> u16 {
+    pub fn dst(&self) -> u16 {
         u16::from_be_bytes(
             self.0[TCP_DST_PORT]
                 .try_into()
@@ -82,7 +82,7 @@ impl Tcp {
         self.0[TCP_DST_PORT].copy_from_slice(&dst.to_be_bytes());
     }
 
-    pub fn seq_num(&self) -> u32 {
+    pub fn seq(&self) -> u32 {
         u32::from_be_bytes(
             self.0[TCP_SEQ_NUM]
                 .try_into()
@@ -94,7 +94,7 @@ impl Tcp {
         self.0[TCP_SEQ_NUM].copy_from_slice(&seq.to_be_bytes())
     }
 
-    pub fn ack_num(&self) -> u32 {
+    pub fn ack(&self) -> u32 {
         u32::from_be_bytes(
             self.0[TCP_ACK_NUM]
                 .try_into()
@@ -276,10 +276,10 @@ impl core::fmt::Debug for Tcp {
         write!(
             f,
             "Tcp {{ src: {}, dst: {}, seq: {}, ack: {}, window: {}, csum: {:#x}, uptr: {}, flags: {} }}",
-            self.src_port(),
-            self.dst_port(),
-            self.seq_num(),
-            self.ack_num(),
+            self.src(),
+            self.dst(),
+            self.seq(),
+            self.ack(),
             self.window(),
             self.checksum(),
             self.urgent_ptr(),

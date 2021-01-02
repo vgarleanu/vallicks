@@ -240,16 +240,20 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
     type Context = Ipv4;
 
     fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
-        let conn_key = (ctx.sip(), item.src_port(), ctx.dip(), item.dst_port());
+        let conn_key = (ctx.sip(), item.src(), ctx.dip(), item.dst());
 
         match self.tcp_map.entry(conn_key) {
             Entry::Occupied(mut entry) => {
                 return entry.get_mut().handle_packet(item, ctx);
             },
             Entry::Vacant(entry) => {
-                let (connection, tx) = TcpConnection::accept(item, ctx)?;
-                entry.insert(connection);
-                return Some(tx);
+                match TcpConnection::accept(item, ctx) {
+                    Ok((conn, tx)) => {
+                        entry.insert(conn);
+                        return Some(tx);
+                    }
+                    Err(e) => return e,
+                }
             },
         }
     }
