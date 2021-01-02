@@ -21,7 +21,7 @@ const IPV4_CHECKSUM_OFFSET: RangeInclusive<usize> = 10..=11;
 const IPV4_SIP_OFFSET: RangeInclusive<usize> = 12..=15;
 const IPV4_DIP_OFFSET: RangeInclusive<usize> = 16..=19;
 const IPV4_HEADER_OFFSET: RangeInclusive<usize> = 0..=19;
-const IPV4_DATA_OFFSET: RangeFrom<usize> = 20..;
+const IPV4_DATA_OFFSET: RangeFrom<usize> = 22..;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
@@ -182,6 +182,10 @@ impl Ipv4 {
 
     pub fn header(&self) -> &[u8] {
         &self.0[IPV4_HEADER_OFFSET]
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 

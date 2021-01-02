@@ -95,24 +95,21 @@ impl TcpConnection {
     }
 
     pub fn handle_packet(&mut self, tcp: Tcp, ip: &Ipv4) -> Option<Tcp> {
-        // check validity of the ack num
-        let ackn = tcp.ack();
-
-        if !(self.snd_una.wrapping_sub(ackn) > (1 << 31)
-            && ackn.wrapping_sub(self.snd_nxt.wrapping_add(1)) > (1 << 31))
-        {
-            // received invalid ack
-            if let TcpStates::TCP_SYN_RECEIVED | TcpStates::TCP_ESTABLISHED = self.state {
-                return Some(self.reset(tcp, ip));
+        // handle keep_alives
+        println!("state: {:?}", self.state);
+        if let TcpStates::TCP_ESTABLISHED = self.state {
+            if tcp.is_ack() && !tcp.is_psh() {
+                println!("rcv_nxt {} ack {}", self.rcv_nxt, tcp.ack());
+                return Some(self.ack(tcp, ip));
             }
-            return None;
         }
 
         // SYN-SENT state
         if let TcpStates::TCP_SYNSENT = self.state {
             if tcp.is_ack() {
                 if tcp.ack() <= self.snd_iss || self.snd_nxt < tcp.ack() {
-                    return Some(self.reset(tcp, ip)); // <SEQ=SEG.ACK>
+                    // return Some(self.reset(tcp, ip)); // <SEQ=SEG.ACK>
+                    return None;
                 }
 
                 // use wrapping comparations
@@ -122,8 +119,6 @@ impl TcpConnection {
                         return None;
                     }
                 }
-
-                // TODO: 3rd check the security and precedence
             }
 
             // 4th step, check the syn bit
@@ -141,6 +136,7 @@ impl TcpConnection {
                 // our SYN has been ack'd
                 if self.snd_una > self.snd_iss {
                     self.state = TcpStates::TCP_ESTABLISHED;
+                    println!("tcp: about to send ack for SYNSENT");
                     return Some(self.ack(tcp, ip)); // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
                 }
             }
@@ -210,6 +206,11 @@ impl TcpConnection {
             // this branch is reached.
 
             self.state = TcpStates::TCP_CLOSE;
+            println!(
+                "tcp: returning reset seq: {} nxt: {}",
+                tcp.seq(),
+                self.rcv_nxt
+            );
             return Some(self.reset(tcp, ip));
         }
 
@@ -283,13 +284,17 @@ impl TcpConnection {
         }
 
         // seventh process segment text.
+        println!("{:?}", tcp);
+        println!("{:?}", tcp.data());
+        println!("{:x?}", tcp.as_bytes());
         if tcp.data().len() > 0 {
             if let TcpStates::TCP_ESTABLISHED
             | TcpStates::TCP_FIN_WAIT_1
             | TcpStates::TCP_FIN_WAIT_2 = self.state
             {
                 if tcp.seq() == self.rcv_nxt {
-                    println!("{}", String::from_utf8_lossy(tcp.data()));
+                    println!("len: {}", tcp.data().len());
+                    println!("{:#x?}", tcp.data());
                     // Once the TCP takes responsibility for the data it advances
                     // RCV.NXT over the data accepted, and adjusts RCV.WND as
                     // apporopriate to the current buffer availability.  The total of

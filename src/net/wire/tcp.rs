@@ -15,8 +15,9 @@ const TCP_WINDOW: RangeInclusive<usize> = 14..=15;
 const TCP_CSUM: RangeInclusive<usize> = 16..=17;
 const TCP_URGENT_PTR: RangeInclusive<usize> = 18..=19;
 const TCP_OPTIONS: RangeInclusive<usize> = 20..=22;
-const TCP_DATA: RangeFrom<usize> = 32..;
+const TCP_DATA: RangeFrom<usize> = 20..;
 
+#[derive(Debug)]
 pub enum TcpStates {
     TCP_LISTEN,
     TCP_SYNSENT,
@@ -225,6 +226,10 @@ impl Tcp {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 

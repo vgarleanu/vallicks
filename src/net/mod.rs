@@ -244,6 +244,7 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
 
         match self.tcp_map.entry(conn_key) {
             Entry::Occupied(mut entry) => {
+                println!("{:x?}", ctx.as_bytes());
                 return entry.get_mut().handle_packet(item, ctx);
             },
             Entry::Vacant(entry) => {
