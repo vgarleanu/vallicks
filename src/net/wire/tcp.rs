@@ -4,7 +4,7 @@ use core::convert::TryInto;
 use core::ops::RangeFrom;
 use core::ops::RangeInclusive;
 
-const TCP_MIN_LEN: usize = 24;
+const TCP_MIN_LEN: usize = 20;
 const TCP_SRC_PORT: RangeInclusive<usize> = 0..=1;
 const TCP_DST_PORT: RangeInclusive<usize> = 2..=3;
 const TCP_SEQ_NUM: RangeInclusive<usize> = 4..=7;
@@ -182,6 +182,10 @@ impl Tcp {
         )
     }
 
+    pub fn set_window(&mut self, window: u16) {
+        self.0[TCP_WINDOW].copy_from_slice(&window.to_be_bytes());
+    }
+
     pub fn checksum(&self) -> u16 {
         u16::from_be_bytes(
             self.0[TCP_CSUM]
@@ -213,6 +217,14 @@ impl Tcp {
 
     pub fn data(&self) -> &[u8] {
         &self.0[TCP_DATA]
+    }
+
+    pub fn set_hlen(&mut self, len: u8) {
+        self.0[12] |= (len / 4) << 4
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
