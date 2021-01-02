@@ -25,9 +25,9 @@ pub struct TcpConnection {
     /// send up
     snd_up: bool,
     /// segment seq number used for last window update
-    snd_wl1: usize,
+    snd_wl1: u32,
     /// segment ack number used for last window update
-    snd_wl2: usize,
+    snd_wl2: u32,
     /// initial send seq num.
     snd_iss: u32,
     /// receive next
@@ -150,8 +150,70 @@ impl TcpConnection {
             }
         }
         // TODO: p.69 check the seq number again??
+        // if invalid <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
 
-        // Process ACKs
+        // second check the rst bit p.70 RFC793
+        if tcp.is_rst() {
+            match self.state {
+                TcpStates::TCP_SYN_RECEIVED => {
+                    // If this connection was initiated with a passive OPEN (i.e.,
+                    // came from the LISTEN state), then return this connection to
+                    // LISTEN state and return.  The user need not be informed.  If
+                    // this connection was initiated with an active OPEN (i.e., came
+                    // from SYN-SENT state) then the connection was refused, signal
+                    // the user "connection refused".  In either case, all segments
+                    // on the retransmission queue should be removed.  And in the
+                    // active OPEN case, enter the CLOSED state and delete the TCB,
+                    // and return.
+
+                    // TODO: Remove this TCP connection from the tcp stack as it is marked CLOSED.
+                    self.state = TcpStates::TCP_CLOSE;
+                }
+                TcpStates::TCP_ESTABLISHED
+                | TcpStates::TCP_FIN_WAIT_1
+                | TcpStates::TCP_FIN_WAIT_2
+                | TcpStates::TCP_CLOSE_WAIT => {
+                    // If the RST bit is set then, any outstanding RECEIVEs and SEND
+                    // should receive "reset" responses.  All segment queues should be
+                    // flushed.  Users should also receive an unsolicited general
+                    // "connection reset" signal.  Enter the CLOSED state, delete the
+                    // TCB, and return.
+                    self.state = TcpStates::TCP_CLOSE;
+                }
+                TcpStates::TCP_CLOSING | TcpStates::TCP_LAST_ACK | TcpStates::TCP_TIME_WAIT => {
+                    // If the RST bit is set then, enter the CLOSED state, delete the
+                    // TCB, and return.
+                    self.state = TcpStates::TCP_CLOSE;
+                }
+                TcpStates::TCP_SYNSENT | TcpStates::TCP_LISTEN | TcpStates::TCP_CLOSE => {
+                    println!(
+                        "tcp: attempted to process packet when socket is SYNSENT | LISTEN | CLOSE"
+                    );
+                }
+            }
+            return None;
+        }
+
+        // fourth check syn bit p.71
+        if tcp.is_syn() {
+            // If the SYN is in the window it is an error, send a reset, any
+            // outstanding RECEIVEs and SEND should receive "reset" responses,
+            // all segment queues should be flushed, the user should also
+            // receive an unsolicited general "connection reset" signal, enter
+            // the CLOSED state, delete the TCB, and return.
+
+            // If the SYN is not in the window this step would not be reached
+            // and an ack would have been sent in the first step (sequence
+            // number check).
+            //
+            // NOTE: I think its safe to assume that we can just reset any connection if
+            // this branch is reached.
+
+            self.state = TcpStates::TCP_CLOSE;
+            return Some(self.reset(tcp, ip));
+        }
+
+        // fifth check the ack field
         if tcp.is_ack() {
             match self.state {
                 TcpStates::TCP_SYN_RECEIVED => {
@@ -163,30 +225,77 @@ impl TcpConnection {
                 | TcpStates::TCP_CLOSE_WAIT
                 | TcpStates::TCP_CLOSING
                 | TcpStates::TCP_LAST_ACK => {
-                    // TODO: Clean retransmission queue of packets that have been ack'd
-                    if tcp.ack() < self.snd_una {
-                        // got a duplicate ack. safe to ignore
-                        return None;
-                    }
+                    if self.snd_una < tcp.ack() && tcp.ack() <= self.snd_nxt {
+                        self.snd_una = tcp.ack();
+                        // TODO: clean retransmission queue here and send acks to our clients
+                        // waiting for confirmation of send's
 
-                    if tcp.ack() > self.snd_nxt {
-                        // if we got a ack for something we havent sent yet we just drop the packet
-                        return None;
+                        if self.snd_wl1 < tcp.seq()
+                            || (self.snd_wl1 == tcp.seq() && self.snd_wl2 <= tcp.ack())
+                        {
+                            self.snd_wnd = tcp.window() as u32;
+                            self.snd_wl1 = tcp.seq();
+                            self.snd_wl2 = tcp.ack();
+                        }
+
+                        // FIN-WAIT-1 STATE
+                        if let TcpStates::TCP_FIN_WAIT_1 = self.state {
+                            // NOTE: Do we have to do extra checking of the packet to ensure that
+                            // this ack ack's our FIN?
+                            self.state = TcpStates::TCP_FIN_WAIT_2;
+                        }
+
+                        // FIN-WAIT-2 STATE
+                        if let TcpStates::TCP_FIN_WAIT_2 = self.state {
+                            // If the retransmission queue is empty the users CLOSE can be ok'd
+                            // without deleting the TCB.
+                        }
+
+                        // CLOSING STATE
+                        if let TcpStates::TCP_CLOSING = self.state {
+                            // In addition to the processing for the ESTABLISHED state, if
+                            // the ACK acknowledges our FIN then enter the TIME-WAIT state,
+                            // otherwise ignore the segment.
+                        }
+
+                        // LAST-ACK STATE
+                        if let TcpStates::TCP_LAST_ACK = self.state {
+                            // The only thing that can arrive in this state is an
+                            // acknowledgment of our FIN.  If our FIN is now acknowledged,
+                            // delete the TCB, enter the CLOSED state, and return.
+                        }
+
+                        // TIME-WAIT STATE
+                        if let TcpStates::TCP_TIME_WAIT = self.state {
+                            // The only thing that can arrive in this state is a
+                            // retransmission of the remote FIN.  Acknowledge it, and restart
+                            // the 2 MSL timeout.
+                        }
                     }
                 }
                 _ => {}
             }
         }
 
-        // Process PSH
-        if tcp.is_psh() {
+        // sixth, check the urg bit.
+        if tcp.is_urg() {
+            unimplemented!("Fuck you, this rfc is deprecated");
+        }
+
+        // seventh process segment text.
+        if tcp.data().len() > 0 {
             if let TcpStates::TCP_ESTABLISHED
             | TcpStates::TCP_FIN_WAIT_1
             | TcpStates::TCP_FIN_WAIT_2 = self.state
             {
                 if tcp.seq() == self.rcv_nxt {
-                    self.rcv_nxt += tcp.len() as u32;
                     println!("{}", String::from_utf8_lossy(tcp.data()));
+                    // Once the TCP takes responsibility for the data it advances
+                    // RCV.NXT over the data accepted, and adjusts RCV.WND as
+                    // apporopriate to the current buffer availability.  The total of
+                    // RCV.NXT and RCV.WND should not be reduced.
+                    //
+                    self.rcv_nxt += tcp.len() as u32;
                     return Some(self.ack(tcp, ip)); // send our ack
                 } else {
                     // TODO: Move this segment into a queue for later processing as it is within
@@ -195,6 +304,12 @@ impl TcpConnection {
                 }
             }
         }
+
+        // eighth check the fin bit.
+        if tcp.is_fin() {
+            println!("got a fin");
+        }
+
         None
     }
 
