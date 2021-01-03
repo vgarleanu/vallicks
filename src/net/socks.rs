@@ -1,5 +1,8 @@
 use crate::sync::mpsc::*;
+use core::time::Duration;
 use crate::prelude::*;
+use crate::sync::Arc;
+use crate::sync::RwLock;
 use super::OPEN_PORTS;
 use super::StreamKey;
 
@@ -26,25 +29,20 @@ impl TcpListener {
     }
 
     pub async fn accept(&mut self) -> Option<TcpStream> {
-        let conn = self.rx.recv().await;
-        println!("received conn");
-        conn
+        self.rx.recv().await
     }
 }
 
 pub struct TcpStream {
-    // we send data over this
-    pub(crate) tx_channel: UnboundedSender<Vec<u8>>,
-    // we receive data over this
-    pub(crate) rx_channel: UnboundedReceiver<Vec<u8>>,
+    pub(crate) raw_connection: Arc<RwLock<super::TcpConnection>>,
 }
 
 impl TcpStream {
-    pub async fn read(&mut self) -> Option<Vec<u8>> {
-        self.rx_channel.recv().await
+    pub async fn read(&mut self, buffer: &mut [u8]) -> usize{
+        self.raw_connection.write().await.read(buffer)
     }
 
     pub fn write(&mut self, item: Vec<u8>) {
-        self.tx_channel.send(item).unwrap();
+        unimplemented!()
     }
 }

@@ -21,8 +21,11 @@ hashbrown = "0.9.1"
 buddy_system_allocator = { version = "0.6.0", features = ["const_fn"] }
 vallicks-macros = { path = "./libs/vallicks_macros" }
 crossbeam-queue = { version = "0.3.1", default-features = false, features = ["alloc"] }
+crossbeam-utils = { version = "0.8.1", default-features = false }
 conquer-once = { version = "0.2.0", default-features = false }
 futures-util = { version = "0.3.8", default-features = false, features = ["alloc", "async-await", "async-await-macro", "sink"] }
+async-trait = "0.1.42"
+slab = { git = "https://github.com/zakarumych/slab", branch = "nostd", default-features = false }
 
 [profile.dev]
 panic = "abort"

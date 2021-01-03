@@ -28,13 +28,18 @@ fn main() {
 
 async fn tcp_test() {
     let mut listener = TcpListener::bind(1234).expect("failed to bind to port 1234");
-
     println!("binded to 1234");
+
     loop {
         if let Some(mut conn) = listener.accept().await {
-            let data = conn.read().await.unwrap();
-            println!("{}", String::from_utf8_lossy(&data));
-            conn.write(data);
+            loop {
+                let mut buffer: [u8; 1000] = [0; 1000];
+                let mut read = conn.read(&mut buffer).await;
+                if read > 0 {
+                    println!("{}", String::from_utf8_lossy(&buffer[..read]));
+                    conn.write(buffer[..read].to_vec());
+                }
+            }
         }
     }
 }

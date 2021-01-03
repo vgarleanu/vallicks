@@ -1,6 +1,10 @@
 pub mod mpsc;
+pub mod rwlock;
+pub mod waker_set;
 
-use alloc::sync::Arc;
+pub use self::rwlock::RwLock;
+pub use alloc::sync::Arc;
+
 use core::cell::UnsafeCell;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;

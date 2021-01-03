@@ -36,6 +36,7 @@ use futures_util::stream::StreamExt;
 use futures_util::future::FutureExt;
 use futures_util::future;
 use lazy_static::lazy_static;
+use async_trait::async_trait;
 
 type StreamKey = TcpStream;
 type OpenPorts = Arc<RwLock<HashMap<u16, UnboundedSender<StreamKey>>>>;
@@ -47,6 +48,7 @@ lazy_static! {
 /// Trait used for parsing a packet of type `Item`. The aim of this is that in the end our network
 /// stack visually looks like a state machine as well, with the idea that packets go down the
 /// callstack in an obvious fashion.
+#[async_trait]
 trait ProcessPacket<Item> {
     /// Output packet.
     type Output: Packet;
@@ -56,7 +58,7 @@ trait ProcessPacket<Item> {
 
     /// Process packet of type `Item`. This method can return an Option depending on whether we
     /// want to send a packet as a reply or not.
-    fn handle_packet(&mut self, item: Item, ctx: &Self::Context) -> Option<Self::Output>;
+    async fn handle_packet(&mut self, item: Item, ctx: &Self::Context) -> Option<Self::Output>;
 }
 
 pub struct NetworkDevice<T: NetworkDriver> {
@@ -120,7 +122,7 @@ impl<T: NetworkDriver> NetworkDevice<T> {
 
             match future::select(rx_item, tx_item).await {
                 future::Either::Left((item, _)) => if let Some(frame) = item {
-                    if let Some(packet) = self.handle_packet(frame, &()) {
+                    if let Some(packet) = self.handle_packet(frame, &()).await {
                         let _ = self.tx_sink.send(packet.into_bytes()).await;
                         let _ = self.tx_sink.flush().await;
                     }
@@ -139,19 +141,20 @@ impl<T: NetworkDriver> NetworkDevice<T> {
     }
 }
 
+#[async_trait]
 impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
     type Output = Ether2Frame;
     type Context = ();
 
-    fn handle_packet(&mut self, item: Ether2Frame, _: &Self::Context) -> Option<Self::Output> {
+    async fn handle_packet(&mut self, item: Ether2Frame, _: &Self::Context) -> Option<Self::Output> {
         let (data, frame_type) = match item.dtype() {
             EtherType::IPv4 => {
                 let packet = Ipv4::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item)?.into_bytes(), EtherType::IPv4)
+                (self.handle_packet(packet, &item).await?.into_bytes(), EtherType::IPv4)
             }
             EtherType::ARP => {
                 let packet = ArpPacket::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item)?.into_bytes(), EtherType::ARP)
+                (self.handle_packet(packet, &item).await?.into_bytes(), EtherType::ARP)
             }
             _ => {
                 return None;
@@ -168,11 +171,12 @@ impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
     }
 }
 
+#[async_trait]
 impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
     type Output = ArpPacket;
     type Context = Ether2Frame;
 
-    fn handle_packet(&mut self, item: ArpPacket, _: &Self::Context) -> Option<Self::Output> {
+    async fn handle_packet(&mut self, item: ArpPacket, _: &Self::Context) -> Option<Self::Output> {
         if item.tmac() != self.mac && item.tip() != self.ip {
             return None;
         }
@@ -193,11 +197,12 @@ impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
     }
 }
 
+#[async_trait]
 impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
     type Output = Ipv4;
     type Context = Ether2Frame;
 
-    fn handle_packet(&mut self, item: Ipv4, _: &Self::Context) -> Option<Self::Output> {
+    async fn handle_packet(&mut self, item: Ipv4, _: &Self::Context) -> Option<Self::Output> {
         // packet is malformed or not intended for us.
         if item.dip() != self.ip {
             return None;
@@ -206,11 +211,11 @@ impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
         let (data, packet_type) = match item.proto() {
             Ipv4Proto::ICMP => {
                 let packet = Icmp::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item)?.into_bytes(), Ipv4Proto::ICMP)
+                (self.handle_packet(packet, &item).await?.into_bytes(), Ipv4Proto::ICMP)
             }
             Ipv4Proto::TCP => {
                 let packet = Tcp::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item)?.into_bytes(), Ipv4Proto::TCP)
+                (self.handle_packet(packet, &item).await?.into_bytes(), Ipv4Proto::TCP)
             }
             _ => {
                 return None
@@ -230,11 +235,12 @@ impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
     }
 }
 
+#[async_trait]
 impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
     type Output = Icmp;
     type Context = Ipv4;
 
-    fn handle_packet(&mut self, item: Icmp, _: &Self::Context) -> Option<Self::Output> {
+    async fn handle_packet(&mut self, item: Icmp, _: &Self::Context) -> Option<Self::Output> {
         match item.packet_type() {
             IcmpType::Echo => {
                 let mut reply = item.clone();
@@ -247,16 +253,20 @@ impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
     }
 }
 
+#[async_trait]
 impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
     type Output = Tcp;
     type Context = Ipv4;
 
-    fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
+    async fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
         let conn_key = (ctx.sip(), item.src(), ctx.dip(), item.dst());
 
         match self.tcp_map.entry(conn_key) {
             Entry::Occupied(mut entry) => {
-                return entry.get_mut().handle_packet(item, ctx);
+                println!("trying to lock");
+                let mut lock = entry.get_mut().write().await;
+                println!("locked");
+                return lock.handle_packet(item, ctx);
             },
             Entry::Vacant(entry) => {
                 let key = item.dst();
@@ -264,13 +274,11 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
 
                 // we are listening on dst port
                 if let Some(listener) = lock.get(&key) {
-                    let (tx, lrx) = channel();
-                    let (ltx, rx) = channel();
-                    match TcpConnection::accept(item, ctx, rx, tx) {
+                    match TcpConnection::accept(item, ctx) {
                         Ok((conn, out)) => {
+                            let conn = Arc::new(crate::sync::RwLock::new(conn));
                             let stream = TcpStream {
-                                tx_channel: ltx,
-                                rx_channel: lrx,
+                                raw_connection: conn.clone()
                             };
 
                             listener.send(stream).expect("failed to send key to listener");

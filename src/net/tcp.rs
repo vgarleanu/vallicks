@@ -8,21 +8,19 @@ use super::wire::Packet;
 use crate::prelude::*;
 use crate::sync::mpsc::UnboundedReceiver;
 use crate::sync::mpsc::UnboundedSender;
+use crate::sync::rwlock::RwLock;
 
+use alloc::sync::Arc;
 use hashbrown::HashMap;
 
 pub type ConnectionKey = (Ipv4Addr, u16, Ipv4Addr, u16); // sip, sport, dip, dport
-pub type ConnectionMap = HashMap<ConnectionKey, TcpConnection>;
+pub type ConnectionMap = HashMap<ConnectionKey, Arc<RwLock<TcpConnection>>>;
 
 pub struct TcpConnection {
     /// Current state of this tcp connection
     state: TcpStates,
     /// A quad containing remote and local destinations and ports.
     quad: ConnectionKey,
-    /// A channel over which we can receive packets to send.
-    rx: UnboundedReceiver<Vec<u8>>,
-    /// A channel over which we can send packets that we received.
-    tx: UnboundedSender<Vec<u8>>,
     /// send unack'd
     snd_una: u32,
     /// send next
@@ -45,15 +43,12 @@ pub struct TcpConnection {
     rcv_up: bool,
     /// initial receive seq num
     rcv_irs: u32,
+    /// bytes received so far
+    data: Vec<u8>,
 }
 
 impl TcpConnection {
-    pub fn accept(
-        tcp: Tcp,
-        ip: &Ipv4,
-        rx: UnboundedReceiver<Vec<u8>>,
-        tx: UnboundedSender<Vec<u8>>,
-    ) -> Result<(Self, Tcp), Option<Tcp>> {
+    pub fn accept(tcp: Tcp, ip: &Ipv4) -> Result<(Self, Tcp), Option<Tcp>> {
         // First check for a RST
         if tcp.is_rst() {
             return Err(None);
@@ -91,8 +86,7 @@ impl TcpConnection {
             rcv_wnd: tcp.window(),
             rcv_up: false,
             quad: (ip.sip(), tcp.src(), ip.dip(), tcp.dst()),
-            rx,
-            tx,
+            data: Vec::new(),
         };
 
         let mut packet = Tcp::zeroed();
@@ -301,9 +295,7 @@ impl TcpConnection {
                     // apporopriate to the current buffer availability.  The total of
                     // RCV.NXT and RCV.WND should not be reduced.
 
-                    self.tx
-                        .send(tcp.data().to_vec())
-                        .expect("failed to send data to surface");
+                    self.data.extend_from_slice(tcp.data());
 
                     self.rcv_nxt += tcp.dlen() as u32;
                     return Some(self.ack(tcp, ip)); // send our ack
@@ -374,5 +366,16 @@ impl TcpConnection {
 
         let mut offset = seq.wrapping_sub(self.snd_una) as usize;
         todo!()
+    }
+
+    pub fn has_data(&self) -> bool {
+        !self.data.is_empty()
+    }
+
+    /// Function reads data into a buffer returning the number of bytes read.
+    pub fn read(&mut self, buffer: &mut [u8]) -> usize {
+        let min_len = buffer.len().min(self.data.len());
+        self.data[..min_len].swap_with_slice(&mut buffer[..min_len]);
+        min_len
     }
 }
