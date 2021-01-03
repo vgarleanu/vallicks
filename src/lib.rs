@@ -213,6 +213,7 @@
     link_args,
     linkage,
     log_syntax,
+    map_first_last,
     maybe_uninit_ref,
     maybe_uninit_slice,
     naked_functions,
@@ -360,9 +361,6 @@ pub fn init(boot_info: &'static BootInfo) {
 
     arch::pit::init();
 
-    x86_64::instructions::interrupts::enable();
-    println!("int: interrupts enabled");
-
     {
         let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
 
@@ -380,8 +378,8 @@ pub fn init(boot_info: &'static BootInfo) {
             |_| println!("alloc: Allocator init done..."),
         );
 
-    let mut pci = pci::Pci::new();
-    pci.enumerate();
+    x86_64::instructions::interrupts::enable();
+    println!("int: interrupts enabled");
 }
 
 /// Method informs Qemu of the status of the VM, allowing us to send error codes downstream. This

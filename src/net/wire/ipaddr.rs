@@ -52,3 +52,13 @@ impl core::fmt::Debug for Ipv4Addr {
         )
     }
 }
+
+impl core::fmt::Display for Ipv4Addr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}.{}.{}.{}",
+            self.inner[0], self.inner[1], self.inner[2], self.inner[3]
+        )
+    }
+}

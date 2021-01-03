@@ -6,6 +6,9 @@ use super::wire::tcp::TcpStates;
 use super::wire::Packet;
 
 use crate::prelude::*;
+use crate::sync::mpsc::UnboundedReceiver;
+use crate::sync::mpsc::UnboundedSender;
+
 use hashbrown::HashMap;
 
 pub type ConnectionKey = (Ipv4Addr, u16, Ipv4Addr, u16); // sip, sport, dip, dport
@@ -16,6 +19,10 @@ pub struct TcpConnection {
     state: TcpStates,
     /// A quad containing remote and local destinations and ports.
     quad: ConnectionKey,
+    /// A channel over which we can receive packets to send.
+    rx: UnboundedReceiver<Vec<u8>>,
+    /// A channel over which we can send packets that we received.
+    tx: UnboundedSender<Vec<u8>>,
     /// send unack'd
     snd_una: u32,
     /// send next
@@ -41,7 +48,12 @@ pub struct TcpConnection {
 }
 
 impl TcpConnection {
-    pub fn accept(tcp: Tcp, ip: &Ipv4) -> Result<(Self, Tcp), Option<Tcp>> {
+    pub fn accept(
+        tcp: Tcp,
+        ip: &Ipv4,
+        rx: UnboundedReceiver<Vec<u8>>,
+        tx: UnboundedSender<Vec<u8>>,
+    ) -> Result<(Self, Tcp), Option<Tcp>> {
         // First check for a RST
         if tcp.is_rst() {
             return Err(None);
@@ -79,6 +91,8 @@ impl TcpConnection {
             rcv_wnd: tcp.window(),
             rcv_up: false,
             quad: (ip.sip(), tcp.src(), ip.dip(), tcp.dst()),
+            rx,
+            tx,
         };
 
         let mut packet = Tcp::zeroed();
@@ -286,7 +300,11 @@ impl TcpConnection {
                     // RCV.NXT over the data accepted, and adjusts RCV.WND as
                     // apporopriate to the current buffer availability.  The total of
                     // RCV.NXT and RCV.WND should not be reduced.
-                    //
+
+                    self.tx
+                        .send(tcp.data().to_vec())
+                        .expect("failed to send data to surface");
+
                     self.rcv_nxt += tcp.dlen() as u32;
                     return Some(self.ack(tcp, ip)); // send our ack
                 } else {
@@ -299,7 +317,25 @@ impl TcpConnection {
 
         // eighth check the fin bit.
         if tcp.is_fin() {
-            println!("got a fin");
+            match self.state {
+                TcpStates::TCP_CLOSE | TcpStates::TCP_LISTEN | TcpStates::TCP_SYNSENT => {
+                    // dont progress segment
+                    return None;
+                }
+                TcpStates::TCP_SYN_RECEIVED | TcpStates::TCP_ESTABLISHED => {
+                    self.state = TcpStates::TCP_CLOSE_WAIT;
+                }
+                TcpStates::TCP_FIN_WAIT_1 => {
+                    // If our FIN has been ACKed (perhaps in this segment), then
+                    // enter TIME-WAIT, start the time-wait timer, turn off the other
+                    // timers; otherwise enter the CLOSING state.
+                    self.state = TcpStates::TCP_FIN_WAIT_2;
+                }
+                TcpStates::TCP_TIME_WAIT => {
+                    // TODO: Restart 2msl time wait timeout.
+                }
+                _ => {}
+            }
         }
 
         None

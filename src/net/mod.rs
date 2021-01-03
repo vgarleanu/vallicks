@@ -2,10 +2,13 @@
 pub mod wire;
 /// Our tcp stack implementation
 pub mod tcp;
+/// Our Tcp socket interface.
+pub mod socks;
 
 pub use crate::net::wire as frames;
 
 use crate::prelude::*;
+use crate::net::tcp::*;
 
 use crate::net::wire::arp::{ArpOpcode, ArpPacket};
 use crate::net::wire::eth2::{Ether2Frame, EtherType};
@@ -16,9 +19,13 @@ use crate::net::wire::tcp::TcpFlag;
 use crate::net::wire::mac::Mac;
 use crate::net::wire::tcp::Tcp;
 use crate::net::wire::Packet;
+use crate::net::socks::TcpStream;
 
 use crate::driver::NetworkDriver;
 use crate::sync::mpsc::*;
+
+use alloc::sync::Arc;
+use spin::RwLock;
 
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
@@ -28,8 +35,14 @@ use futures_util::stream::Fuse;
 use futures_util::stream::StreamExt;
 use futures_util::future::FutureExt;
 use futures_util::future;
+use lazy_static::lazy_static;
 
-use crate::net::tcp::*;
+type StreamKey = TcpStream;
+type OpenPorts = Arc<RwLock<HashMap<u16, UnboundedSender<StreamKey>>>>;
+
+lazy_static! {
+    pub static ref OPEN_PORTS: OpenPorts = Arc::new(RwLock::new(HashMap::new()));
+}
 
 /// Trait used for parsing a packet of type `Item`. The aim of this is that in the end our network
 /// stack visually looks like a state machine as well, with the idea that packets go down the
@@ -246,13 +259,29 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
                 return entry.get_mut().handle_packet(item, ctx);
             },
             Entry::Vacant(entry) => {
-                match TcpConnection::accept(item, ctx) {
-                    Ok((conn, tx)) => {
-                        entry.insert(conn);
-                        return Some(tx);
+                let key = item.dst();
+                let lock = OPEN_PORTS.read();
+
+                // we are listening on dst port
+                if let Some(listener) = lock.get(&key) {
+                    let (tx, lrx) = channel();
+                    let (ltx, rx) = channel();
+                    match TcpConnection::accept(item, ctx, rx, tx) {
+                        Ok((conn, out)) => {
+                            let stream = TcpStream {
+                                tx_channel: ltx,
+                                rx_channel: lrx,
+                            };
+
+                            listener.send(stream).expect("failed to send key to listener");
+                            entry.insert(conn);
+
+                            return Some(out);
+                        }
+                        Err(e) => return e,
                     }
-                    Err(e) => return e,
                 }
+                return None;
             },
         }
     }

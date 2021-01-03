@@ -5,58 +5,51 @@
 #![reexport_test_harness_main = "test_main"]
 
 use vallicks::async_::*;
-use vallicks::arch::pit::get_milis;
-use vallicks::driver::rtl8139::RTL8139;
+use vallicks::driver::rtl8139::*;
 use vallicks::driver::Driver;
-use vallicks::net::wire::ipaddr::Ipv4Addr;
 use vallicks::net::NetworkDevice;
+use vallicks::net::socks::TcpListener;
+use vallicks::net::wire::ipaddr::Ipv4Addr;
+use vallicks::arch::pit::get_milis;
 use vallicks::prelude::*;
-use vallicks::net::wire::eth2::Ether2Frame;
-
-use core::task::Poll;
-use core::pin::Pin;
-
-use futures_util::task::AtomicWaker;
+use core::time::Duration;
+use futures_util::stream::StreamExt;
 
 #[entrypoint]
 fn main() {
     println!("Ok");
     let mut executor = executor::Executor::new();
-    executor.spawn(Task::new(send_packets()));
+
+    // run the network stack for our rtl8139 nic as a separate async task.
+    executor.spawn(Task::new(netstack_process()));
+    executor.spawn(Task::new(tcp_test()));
     executor.run();
 }
 
-async fn send_packets() {
-    if let Some(mut phy) = RTL8139::probe().and_then(|x| Some(RTL8139::preload(x))) {
-        if phy.init().is_ok() {
-            let mut netdev = NetworkDevice::new(&mut phy);
-            netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
-            let mut sender = netdev.get_sender();
-            spawn(async move { netdev.run_forever().await });
+async fn tcp_test() {
+    let mut listener = TcpListener::bind(1234).expect("failed to bind to port 1234");
+
+    println!("binded to 1234");
+    loop {
+        if let Some(mut conn) = listener.accept().await {
+            let data = conn.read().await.unwrap();
+            println!("{}", String::from_utf8_lossy(&data));
+            conn.write(data);
         }
     }
 }
 
-struct After(u64, u64, AtomicWaker);
+async fn netstack_process() {
+    // probe for the rtl8139 nic and then load.
+    let mut phy = RTL8139::probe().map(|x| RTL8139::preload(x)).unwrap();
 
-impl After {
-    pub fn new(every: u64) -> Self {
-        let cur = get_milis();
-
-        Self(cur, cur + every, AtomicWaker::new())
+    // init the driver
+    if phy.init().is_err() {
+        panic!("failed to start phy");
     }
-}
 
-impl core::future::Future for After {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-        if get_milis() >= self.1 {
-            return Poll::Ready(());
-        }
-
-        self.2.register(&cx.waker());
-        self.2.wake();
-        Poll::Pending
-    }
+    let mut netdev = NetworkDevice::new(&mut phy);
+    netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
+    
+    netdev.run_forever().await
 }

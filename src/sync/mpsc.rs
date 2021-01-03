@@ -28,6 +28,7 @@ impl<T> UnboundedSender<T> {
         }
 
         self.chan.send(message);
+        self.chan.wake_rx();
         Ok(())
     }
 

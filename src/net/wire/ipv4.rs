@@ -178,10 +178,7 @@ impl Ipv4 {
     }
 
     pub fn data(&self) -> &[u8] {
-        println!("ipv4_hdr_len={}", self.hdr_len());
         let data_len = (self.len() - self.hdr_len()) as usize;
-        println!("ipv4_data_len={}", data_len);
-        println!("ipv4_data={:x?}", &self.0[IPV4_DATA_OFFSET..]);
         &self.0[IPV4_DATA_OFFSET..IPV4_DATA_OFFSET + data_len]
     }
 
