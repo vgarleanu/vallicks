@@ -21,7 +21,7 @@ const IPV4_CHECKSUM_OFFSET: RangeInclusive<usize> = 10..=11;
 const IPV4_SIP_OFFSET: RangeInclusive<usize> = 12..=15;
 const IPV4_DIP_OFFSET: RangeInclusive<usize> = 16..=19;
 const IPV4_HEADER_OFFSET: RangeInclusive<usize> = 0..=19;
-const IPV4_DATA_OFFSET: RangeFrom<usize> = 22..;
+const IPV4_DATA_OFFSET: usize = 20;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
@@ -63,10 +63,9 @@ impl Ipv4 {
         self.0[IPV4_DSCP_ECN] = dscp_ecn;
     }
 
-    pub fn set_len(&mut self) {
-        let data_len = self.0[IPV4_DATA_OFFSET].len() as u16;
-        let total_len = IPV4_MIN_VALID_LENGTH as u16 + data_len;
-        self.0[IPV4_LEN_OFFSET].copy_from_slice(&total_len.to_be_bytes());
+    pub fn set_len(&mut self, len: u16) {
+        let hdr_len = self.hdr_len();
+        self.0[IPV4_LEN_OFFSET].copy_from_slice(&(len + hdr_len).to_be_bytes());
     }
 
     pub fn set_id(&mut self, id: u16) {
@@ -104,16 +103,18 @@ impl Ipv4 {
     }
 
     pub fn set_data<T: AsRef<[u8]>>(&mut self, data: T) {
+        let data_len = data.as_ref().len();
         self.0.truncate(IPV4_MIN_VALID_LENGTH);
         self.0.extend_from_slice(data.as_ref());
+        self.set_len(data_len as u16)
     }
 
     pub fn version(&self) -> u8 {
         self.0[IPV4_VERSION_OFFSET] >> 4
     }
 
-    pub fn hdr_len(&self) -> u8 {
-        self.0[IPV4_VERSION_OFFSET] & 0x0f
+    pub fn hdr_len(&self) -> u16 {
+        (self.0[IPV4_VERSION_OFFSET] & 0x0f) as u16 * 4
     }
 
     pub fn dscp_ecn(&self) -> u8 {
@@ -177,7 +178,11 @@ impl Ipv4 {
     }
 
     pub fn data(&self) -> &[u8] {
-        &self.0[IPV4_DATA_OFFSET]
+        println!("ipv4_hdr_len={}", self.hdr_len());
+        let data_len = (self.len() - self.hdr_len()) as usize;
+        println!("ipv4_data_len={}", data_len);
+        println!("ipv4_data={:x?}", &self.0[IPV4_DATA_OFFSET..]);
+        &self.0[IPV4_DATA_OFFSET..IPV4_DATA_OFFSET + data_len]
     }
 
     pub fn header(&self) -> &[u8] {

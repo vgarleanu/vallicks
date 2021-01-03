@@ -96,10 +96,8 @@ impl TcpConnection {
 
     pub fn handle_packet(&mut self, tcp: Tcp, ip: &Ipv4) -> Option<Tcp> {
         // handle keep_alives
-        println!("state: {:?}", self.state);
         if let TcpStates::TCP_ESTABLISHED = self.state {
             if tcp.is_ack() && !tcp.is_psh() {
-                println!("rcv_nxt {} ack {}", self.rcv_nxt, tcp.ack());
                 return Some(self.ack(tcp, ip));
             }
         }
@@ -136,7 +134,6 @@ impl TcpConnection {
                 // our SYN has been ack'd
                 if self.snd_una > self.snd_iss {
                     self.state = TcpStates::TCP_ESTABLISHED;
-                    println!("tcp: about to send ack for SYNSENT");
                     return Some(self.ack(tcp, ip)); // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
                 }
             }
@@ -206,11 +203,6 @@ impl TcpConnection {
             // this branch is reached.
 
             self.state = TcpStates::TCP_CLOSE;
-            println!(
-                "tcp: returning reset seq: {} nxt: {}",
-                tcp.seq(),
-                self.rcv_nxt
-            );
             return Some(self.reset(tcp, ip));
         }
 
@@ -284,23 +276,18 @@ impl TcpConnection {
         }
 
         // seventh process segment text.
-        println!("{:?}", tcp);
-        println!("{:?}", tcp.data());
-        println!("{:x?}", tcp.as_bytes());
         if tcp.data().len() > 0 {
             if let TcpStates::TCP_ESTABLISHED
             | TcpStates::TCP_FIN_WAIT_1
             | TcpStates::TCP_FIN_WAIT_2 = self.state
             {
                 if tcp.seq() == self.rcv_nxt {
-                    println!("len: {}", tcp.data().len());
-                    println!("{:#x?}", tcp.data());
                     // Once the TCP takes responsibility for the data it advances
                     // RCV.NXT over the data accepted, and adjusts RCV.WND as
                     // apporopriate to the current buffer availability.  The total of
                     // RCV.NXT and RCV.WND should not be reduced.
                     //
-                    self.rcv_nxt += tcp.len() as u32;
+                    self.rcv_nxt += tcp.dlen() as u32;
                     return Some(self.ack(tcp, ip)); // send our ack
                 } else {
                     // TODO: Move this segment into a queue for later processing as it is within

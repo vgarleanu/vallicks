@@ -140,7 +140,7 @@ impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
                 let packet = ArpPacket::from_bytes(item.data().to_vec()).ok()?;
                 (self.handle_packet(packet, &item)?.into_bytes(), EtherType::ARP)
             }
-            EtherType::Unsupported => {
+            _ => {
                 return None;
             }
         };
@@ -211,7 +211,6 @@ impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
         reply.set_id(item.id());
         reply.set_flags(0x40);
         reply.set_data(data);
-        reply.set_len();
         reply.set_checksum();
 
         Some(reply)
@@ -244,7 +243,6 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
 
         match self.tcp_map.entry(conn_key) {
             Entry::Occupied(mut entry) => {
-                println!("{:x?}", ctx.as_bytes());
                 return entry.get_mut().handle_packet(item, ctx);
             },
             Entry::Vacant(entry) => {

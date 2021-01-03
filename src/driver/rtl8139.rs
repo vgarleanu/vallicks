@@ -261,7 +261,7 @@ impl Driver for RTL8139 {
             // No RX Threshold
             inner
                 .rcr
-                .write(0xf | APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
+                .write(APM | AB | MXDMA_UNLIMITED | RXFTH_NONE | WRAP);
 
             // Enable Tx on the CR register
             inner.cmd_reg.write(RX_ENABLE | TX_ENABLE);
@@ -420,7 +420,12 @@ impl Rtl8139State {
         //       Are we sure that if packets with length less than 64 bytes will not contain
         //       remnants of the old packets?
         // If the frame is correctly parsed we push it into the queue, otherwise just skip it
-        let frame = Ether2Frame::from_bytes(buffer[4..length].to_vec()).ok();
+
+        // NOTE: *** HACK ***
+        // basically for some reason when receiving an `ACK` packet from a client as part of a
+        // 3-way handshake the tcp packet is padded with extra zeroes at the end. My guessing is
+        // that because the packet is less than 64 bytes the packet gets padded.
+        let frame = Ether2Frame::from_bytes(buffer[4..length].to_vec()).ok(); // skip 4 bytes length and dont copy 4 bytes crc at the end.
 
         // Here we set the new index/cursor from where to read new packets, self.rx_cursor should
         // always point to the start of the header.

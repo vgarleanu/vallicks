@@ -213,15 +213,21 @@ impl Tcp {
     }
 
     pub fn dlen(&self) -> usize {
-        self.0[TCP_DATA].len()
+        let tcp_data_offset = self.hlen() as usize;
+        self.0[tcp_data_offset..].len()
     }
 
     pub fn data(&self) -> &[u8] {
-        &self.0[TCP_DATA]
+        let tcp_data_offset = self.hlen() as usize;
+        &self.0[tcp_data_offset..]
     }
 
     pub fn set_hlen(&mut self, len: u8) {
-        self.0[12] |= (len / 4) << 4
+        self.0[TCP_DATA_OFFSET] |= (len / 4) << 4
+    }
+
+    pub fn hlen(&self) -> u8 {
+        ((self.0[TCP_DATA_OFFSET] & 0xf0) >> 4) * 4
     }
 
     pub fn len(&self) -> usize {

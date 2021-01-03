@@ -22,6 +22,7 @@ const ETH2_DATA_OFFSET: RangeFrom<usize> = 14..;
 pub enum EtherType {
     IPv4 = 0x0800,
     ARP = 0x0806,
+    Ipv6 = 0x86dd,
     Unsupported,
 }
 
