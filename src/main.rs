@@ -14,6 +14,7 @@ use vallicks::arch::pit::get_milis;
 use vallicks::prelude::*;
 use core::time::Duration;
 use futures_util::stream::StreamExt;
+use rtl8139_rs::*;
 
 #[entrypoint]
 fn main() {
@@ -33,12 +34,14 @@ async fn tcp_test() {
     loop {
         if let Some(mut conn) = listener.accept().await {
             loop {
+                /*
                 let mut buffer: [u8; 1000] = [0; 1000];
                 let mut read = conn.read(&mut buffer).await;
                 if read > 0 {
                     println!("{}", String::from_utf8_lossy(&buffer[..read]));
                     conn.write(buffer[..read].to_vec());
                 }
+                */
             }
         }
     }

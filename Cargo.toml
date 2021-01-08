@@ -9,7 +9,7 @@ bootloader = { version = "0.9.11", features = ["map_physical_memory"] }
 volatile = "0.2.6"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 spin = "0.7.0"
-x86_64 = "0.12.3"
+x86_64 = "^0.13.1"
 uart_16550 = "0.2.10"
 pic8259_simple = { path = "./libs/pic8259_simple" }
 pc-keyboard = "0.5.1"
@@ -22,10 +22,13 @@ buddy_system_allocator = { version = "0.6.0", features = ["const_fn"] }
 vallicks-macros = { path = "./libs/vallicks_macros" }
 crossbeam-queue = { version = "0.3.1", default-features = false, features = ["alloc"] }
 crossbeam-utils = { version = "0.8.1", default-features = false }
-conquer-once = { version = "0.2.0", default-features = false }
+conquer-once = { version = "0.3.2", default-features = false }
 futures-util = { version = "0.3.8", default-features = false, features = ["alloc", "async-await", "async-await-macro", "sink"] }
 async-trait = "0.1.42"
 slab = { git = "https://github.com/zakarumych/slab", branch = "nostd", default-features = false }
+
+#rtl8139-rs = "0.1.1"
+rtl8139-rs = { path = "../rtl8139-rs" }
 
 [profile.dev]
 panic = "abort"

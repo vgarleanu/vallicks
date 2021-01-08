@@ -43,8 +43,6 @@ pub enum DeviceType {
 
 impl Pci {
     pub fn new() -> Self {
-        // NOTE: running in debug mode makes this code panic and cause a pagefault
-        //       see: https://github.com/phil-opp/blog_os/issues/743
         Self {
             devices: Vec::new(),
         }

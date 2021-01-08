@@ -32,7 +32,7 @@ pub trait Driver {
 /// Trait marks a network driver.
 pub trait NetworkDriver: Driver + Send {
     /// Stream from where we can acquire ether2 frames.
-    type RxSink: Stream<Item = Ether2Frame> + Send + Unpin;
+    type RxSink: Stream<Item = Vec<u8>> + Send + Unpin;
     /// Stream over which we can send packets.
     type TxSink: Sink<Vec<u8>, Error = ()> + Send + Unpin;
 

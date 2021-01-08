@@ -26,6 +26,7 @@ use crate::sync::mpsc::*;
 
 use alloc::sync::Arc;
 use spin::RwLock;
+use core::convert::TryInto;
 
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
@@ -122,9 +123,11 @@ impl<T: NetworkDriver> NetworkDevice<T> {
 
             match future::select(rx_item, tx_item).await {
                 future::Either::Left((item, _)) => if let Some(frame) = item {
-                    if let Some(packet) = self.handle_packet(frame, &()).await {
-                        let _ = self.tx_sink.send(packet.into_bytes()).await;
-                        let _ = self.tx_sink.flush().await;
+                    if let Some(frame) =  Ether2Frame::from_bytes(frame).ok() {
+                        if let Some(packet) = self.handle_packet(frame, &()).await {
+                            let _ = self.tx_sink.send(packet.into_bytes()).await;
+                            let _ = self.tx_sink.flush().await;
+                        }
                     }
                 },
                 future::Either::Right((item, _)) => if let Some(frame) = item {
