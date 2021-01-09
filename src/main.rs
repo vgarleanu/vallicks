@@ -29,17 +29,16 @@ fn main() {
 
 async fn tcp_test() {
     let mut listener = TcpListener::bind(1234).expect("failed to bind to port 1234");
-    println!("binded to 1234");
 
+    println!("listening on 1234");
     loop {
         if let Some(mut conn) = listener.accept().await {
             loop {
                 let mut buffer: [u8; 1000] = [0; 1000];
                 let read = conn.read(&mut buffer).await;
-                println!("read returned bytes={}", read);
                 if read > 0 {
                     println!("{}", String::from_utf8_lossy(&buffer[..read]));
-                    //conn.write(buffer[..read].to_vec());
+                    conn.write(&buffer[..read]).await;
                 }
             }
         }

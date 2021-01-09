@@ -69,6 +69,8 @@ pub struct NetworkDevice<T: NetworkDriver> {
     rx_sink: Fuse<T::RxSink>,
     /// The mac address of the device being wrapped.
     mac: Mac,
+    /// The mac of the last device that talked to us.
+    last_dst_mac: Mac,
     /// Our ip address,
     ip: Ipv4Addr,
     /// Translation table for arp
@@ -97,6 +99,7 @@ impl<T: NetworkDriver> NetworkDevice<T> {
             rx_sink: rx_sink.fuse(),
             tx_sink,
             mac: device.mac(),
+            last_dst_mac: [0, 0, 0, 0, 0, 0].into(),
             arp_translation_table: HashMap::new(),
             ip: Ipv4Addr::new(127, 0, 0, 1),
             tx_queue: Some(tx_queue),
@@ -162,6 +165,7 @@ impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
         let (data, frame_type) = match item.dtype() {
             EtherType::IPv4 => {
                 let packet = Ipv4::from_bytes(item.data().to_vec()).ok()?;
+                self.last_dst_mac = item.src();
                 (
                     self.handle_packet(packet, &item).await?.into_bytes(),
                     EtherType::IPv4,
@@ -285,12 +289,8 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
 
         match self.tcp_map.entry(conn_key) {
             Entry::Occupied(mut entry) => {
-                println!("trying to lock");
                 let mut lock = entry.get_mut().lock().await;
-                println!("gonna handle");
-                let handled = lock.handle_packet(item, ctx);
-                println!("Handled");
-                return handled;
+                return lock.handle_packet(item, ctx);
             }
             Entry::Vacant(entry) => {
                 let key = item.dst();
@@ -298,12 +298,16 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
 
                 // we are listening on dst port
                 if let Some(listener) = lock.get(&key) {
-                    match TcpConnection::accept(item, ctx) {
+                    match TcpConnection::accept(
+                        item,
+                        ctx,
+                        self.mac.clone(),
+                        self.last_dst_mac.clone(),
+                        self.tx_queue_sender.clone(),
+                    ) {
                         Ok((conn, out)) => {
                             let conn = Arc::new(crate::sync::Mutex::new(conn));
-                            let stream = TcpStream {
-                                raw: conn.clone(),
-                            };
+                            let stream = TcpStream { raw: conn.clone() };
 
                             listener
                                 .send(stream)

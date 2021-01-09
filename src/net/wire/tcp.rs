@@ -222,6 +222,10 @@ impl Tcp {
         &self.0[tcp_data_offset..]
     }
 
+    pub fn set_data(&mut self, item: Vec<u8>) {
+        self.0.extend_from_slice(item.as_slice());
+    }
+
     pub fn set_hlen(&mut self, len: u8) {
         self.0[TCP_DATA_OFFSET] |= (len / 4) << 4
     }

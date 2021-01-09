@@ -5,10 +5,10 @@ use crate::sync::mpsc::*;
 use crate::sync::Arc;
 use crate::sync::Mutex;
 
-use core::task::Context;
-use core::pin::Pin;
-use core::task::Poll;
 use core::future::Future;
+use core::pin::Pin;
+use core::task::Context;
+use core::task::Poll;
 
 pub struct TcpListener {
     rx: UnboundedReceiver<StreamKey>,
@@ -58,7 +58,7 @@ impl TcpStream {
                         }
 
                         return Poll::Ready(guard.read(self.buffer));
-                    },
+                    }
                     None => {
                         self.inner.raw.register_waker(cx);
                         return Poll::Pending;
@@ -70,10 +70,11 @@ impl TcpStream {
         ReadFuture {
             inner: self,
             buffer,
-        }.await
+        }
+        .await
     }
 
-    pub fn write(&mut self, item: Vec<u8>) {
-        unimplemented!()
+    pub async fn write(&mut self, item: &[u8]) {
+        self.raw.lock().await.write(item);
     }
 }

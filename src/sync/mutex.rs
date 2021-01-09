@@ -62,7 +62,6 @@ impl<T> Mutex<T> {
                 lock: &self.lock,
                 value: unsafe { &mut *self.data.get() },
                 wakers: &self.wakers,
-
             });
         }
         None

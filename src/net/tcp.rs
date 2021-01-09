@@ -1,5 +1,9 @@
+use super::wire::eth2::Ether2Frame;
+use super::wire::eth2::EtherType;
 use super::wire::ipaddr::Ipv4Addr;
 use super::wire::ipv4::Ipv4;
+use super::wire::ipv4::Ipv4Proto;
+use super::wire::mac::Mac;
 use super::wire::tcp::Tcp;
 use super::wire::tcp::TcpFlag;
 use super::wire::tcp::TcpStates;
@@ -49,10 +53,24 @@ pub struct TcpConnection {
     data: Vec<u8>,
     /// Waker for task waiting on data.
     waker: Option<Waker>,
+    /// Tx queue sender
+    tx_sender: UnboundedSender<Ether2Frame>,
+    /// Last ipv4 packet id
+    last_ipv4_id: u16,
+    /// Mac of this device.
+    mac: Mac,
+    /// Mac of the outbound device,
+    dst_mac: Mac,
 }
 
 impl TcpConnection {
-    pub fn accept(tcp: Tcp, ip: &Ipv4) -> Result<(Self, Tcp), Option<Tcp>> {
+    pub fn accept(
+        tcp: Tcp,
+        ip: &Ipv4,
+        mac: Mac,
+        dst_mac: Mac,
+        tx_sender: UnboundedSender<Ether2Frame>,
+    ) -> Result<(Self, Tcp), Option<Tcp>> {
         // First check for a RST
         if tcp.is_rst() {
             return Err(None);
@@ -92,6 +110,10 @@ impl TcpConnection {
             quad: (ip.sip(), tcp.src(), ip.dip(), tcp.dst()),
             data: Vec::new(),
             waker: None,
+            tx_sender,
+            last_ipv4_id: ip.id(),
+            mac,
+            dst_mac,
         };
 
         let mut packet = Tcp::zeroed();
@@ -370,12 +392,42 @@ impl TcpConnection {
         packet
     }
 
-    fn write(&mut self, mut tcp: Tcp, ip: &Ipv4, seq: u32) -> Tcp {
-        tcp.set_seq(seq);
-        tcp.set_ack(self.rcv_nxt);
+    // FIXME: Not quite optimal as we are constructing lower frames manually rather than just tcp
+    // datagrams.
+    pub fn write(&mut self, item: &[u8]) {
+        self.last_ipv4_id += 1;
 
-        let mut offset = seq.wrapping_sub(self.snd_una) as usize;
-        todo!()
+        let mut packet = Tcp::zeroed();
+        packet.set_dst(self.quad.1);
+        packet.set_src(self.quad.3);
+        packet.set_flags(&[TcpFlag::PSH, TcpFlag::ACK]);
+        packet.set_seq(self.snd_nxt);
+        packet.set_ack(self.rcv_nxt);
+        packet.set_window(self.rcv_wnd);
+        packet.set_hlen(20);
+        packet.set_data(item.to_vec());
+        packet.set_checksum(self.quad.0, self.quad.2);
+
+        self.snd_nxt += item.len() as u32;
+
+        let mut ipv4 = Ipv4::zeroed();
+        ipv4.set_proto(Ipv4Proto::TCP);
+        ipv4.set_dip(self.quad.0);
+        ipv4.set_sip(self.quad.2);
+        ipv4.set_id(self.last_ipv4_id);
+        ipv4.set_flags(0x40);
+        ipv4.set_data(packet.into_bytes());
+        ipv4.set_checksum();
+
+        let mut ether = Ether2Frame::zeroed();
+        ether.set_dst(self.dst_mac);
+        ether.set_src(self.mac);
+        ether.set_dtype(EtherType::IPv4);
+        ether.set_data(ipv4.into_bytes());
+
+        self.tx_sender
+            .send(ether)
+            .expect("failed to write packet to netdev");
     }
 
     pub fn has_data(&self) -> bool {
