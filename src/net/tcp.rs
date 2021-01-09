@@ -8,13 +8,15 @@ use super::wire::Packet;
 use crate::prelude::*;
 use crate::sync::mpsc::UnboundedReceiver;
 use crate::sync::mpsc::UnboundedSender;
-use crate::sync::rwlock::RwLock;
+use crate::sync::Mutex;
+
+use core::task::Waker;
 
 use alloc::sync::Arc;
 use hashbrown::HashMap;
 
 pub type ConnectionKey = (Ipv4Addr, u16, Ipv4Addr, u16); // sip, sport, dip, dport
-pub type ConnectionMap = HashMap<ConnectionKey, Arc<RwLock<TcpConnection>>>;
+pub type ConnectionMap = HashMap<ConnectionKey, Arc<Mutex<TcpConnection>>>;
 
 pub struct TcpConnection {
     /// Current state of this tcp connection
@@ -45,6 +47,8 @@ pub struct TcpConnection {
     rcv_irs: u32,
     /// bytes received so far
     data: Vec<u8>,
+    /// Waker for task waiting on data.
+    waker: Option<Waker>,
 }
 
 impl TcpConnection {
@@ -87,6 +91,7 @@ impl TcpConnection {
             rcv_up: false,
             quad: (ip.sip(), tcp.src(), ip.dip(), tcp.dst()),
             data: Vec::new(),
+            waker: None,
         };
 
         let mut packet = Tcp::zeroed();
@@ -294,10 +299,15 @@ impl TcpConnection {
                     // RCV.NXT over the data accepted, and adjusts RCV.WND as
                     // apporopriate to the current buffer availability.  The total of
                     // RCV.NXT and RCV.WND should not be reduced.
-
                     self.data.extend_from_slice(tcp.data());
 
                     self.rcv_nxt += tcp.dlen() as u32;
+
+                    // wake the async read task.
+                    if let Some(waker) = self.waker.take() {
+                        waker.wake();
+                    }
+
                     return Some(self.ack(tcp, ip)); // send our ack
                 } else {
                     // TODO: Move this segment into a queue for later processing as it is within
@@ -372,10 +382,15 @@ impl TcpConnection {
         !self.data.is_empty()
     }
 
+    pub fn register_waker(&mut self, waker: Waker) {
+        self.waker = Some(waker);
+    }
+
     /// Function reads data into a buffer returning the number of bytes read.
     pub fn read(&mut self, buffer: &mut [u8]) -> usize {
         let min_len = buffer.len().min(self.data.len());
-        self.data[..min_len].swap_with_slice(&mut buffer[..min_len]);
+        buffer[..min_len].copy_from_slice(&self.data[..min_len]);
+        self.data.drain(..min_len);
         min_len
     }
 }

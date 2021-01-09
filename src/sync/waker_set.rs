@@ -146,7 +146,6 @@ impl WakerSet {
     ///
     /// Returns `true` if an operation was notified.
     #[inline]
-    #[cfg(feature = "unstable")]
     pub fn notify_one(&self) -> bool {
         // Use `SeqCst` ordering to synchronize with `Lock::drop()`.
         if self.flag.load(Ordering::SeqCst) & NOTIFIABLE != 0 {

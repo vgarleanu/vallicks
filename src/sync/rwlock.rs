@@ -1,8 +1,8 @@
 use core::cell::UnsafeCell;
 use core::fmt;
+use core::future::Future;
 use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
-use core::future::Future;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::sync::waker_set::WakerSet;
@@ -277,7 +277,10 @@ impl<T: ?Sized> RwLock<T> {
     /// let lock = RwLock::new(10);
     /// assert_eq!(lock.into_inner(), 10);
     /// ```
-    pub fn into_inner(self) -> T where T: Sized {
+    pub fn into_inner(self) -> T
+    where
+        T: Sized,
+    {
         self.value.into_inner()
     }
 

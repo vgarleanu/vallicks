@@ -4,17 +4,17 @@
 #![test_runner(vallicks::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use vallicks::async_::*;
-use vallicks::driver::rtl8139::*;
-use vallicks::driver::Driver;
-use vallicks::net::NetworkDevice;
-use vallicks::net::socks::TcpListener;
-use vallicks::net::wire::ipaddr::Ipv4Addr;
-use vallicks::arch::pit::get_milis;
-use vallicks::prelude::*;
 use core::time::Duration;
 use futures_util::stream::StreamExt;
 use rtl8139_rs::*;
+use vallicks::arch::pit::get_milis;
+use vallicks::async_::*;
+use vallicks::driver::rtl8139::*;
+use vallicks::driver::Driver;
+use vallicks::net::socks::TcpListener;
+use vallicks::net::wire::ipaddr::Ipv4Addr;
+use vallicks::net::NetworkDevice;
+use vallicks::prelude::*;
 
 #[entrypoint]
 fn main() {
@@ -34,14 +34,13 @@ async fn tcp_test() {
     loop {
         if let Some(mut conn) = listener.accept().await {
             loop {
-                /*
                 let mut buffer: [u8; 1000] = [0; 1000];
-                let mut read = conn.read(&mut buffer).await;
+                let read = conn.read(&mut buffer).await;
+                println!("read returned bytes={}", read);
                 if read > 0 {
                     println!("{}", String::from_utf8_lossy(&buffer[..read]));
-                    conn.write(buffer[..read].to_vec());
+                    //conn.write(buffer[..read].to_vec());
                 }
-                */
             }
         }
     }
@@ -58,6 +57,6 @@ async fn netstack_process() {
 
     let mut netdev = NetworkDevice::new(&mut phy);
     netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
-    
+
     netdev.run_forever().await
 }

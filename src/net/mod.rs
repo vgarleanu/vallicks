@@ -1,43 +1,43 @@
-/// Our packet structures and parsers
-pub mod wire;
-/// Our tcp stack implementation
-pub mod tcp;
 /// Our Tcp socket interface.
 pub mod socks;
+/// Our tcp stack implementation
+pub mod tcp;
+/// Our packet structures and parsers
+pub mod wire;
 
 pub use crate::net::wire as frames;
 
-use crate::prelude::*;
 use crate::net::tcp::*;
+use crate::prelude::*;
 
+use crate::net::socks::TcpStream;
 use crate::net::wire::arp::{ArpOpcode, ArpPacket};
 use crate::net::wire::eth2::{Ether2Frame, EtherType};
 use crate::net::wire::icmp::{Icmp, IcmpType};
 use crate::net::wire::ipaddr::Ipv4Addr;
 use crate::net::wire::ipv4::{Ipv4, Ipv4Proto};
-use crate::net::wire::tcp::TcpFlag;
 use crate::net::wire::mac::Mac;
 use crate::net::wire::tcp::Tcp;
+use crate::net::wire::tcp::TcpFlag;
 use crate::net::wire::Packet;
-use crate::net::socks::TcpStream;
 
 use crate::driver::NetworkDriver;
 use crate::sync::mpsc::*;
 
 use alloc::sync::Arc;
-use spin::RwLock;
 use core::convert::TryInto;
+use spin::RwLock;
 
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 
+use async_trait::async_trait;
+use futures_util::future;
+use futures_util::future::FutureExt;
 use futures_util::sink::SinkExt;
 use futures_util::stream::Fuse;
 use futures_util::stream::StreamExt;
-use futures_util::future::FutureExt;
-use futures_util::future;
 use lazy_static::lazy_static;
-use async_trait::async_trait;
 
 type StreamKey = TcpStream;
 type OpenPorts = Arc<RwLock<HashMap<u16, UnboundedSender<StreamKey>>>>;
@@ -77,7 +77,7 @@ pub struct NetworkDevice<T: NetworkDriver> {
     tx_queue: Option<UnboundedReceiver<Ether2Frame>>,
     /// Tx queue sender
     tx_queue_sender: UnboundedSender<Ether2Frame>,
-    
+
     // ** TCP STACK STARTS HERE **
     /// TCP Connection map.
     tcp_map: ConnectionMap,
@@ -99,7 +99,8 @@ impl<T: NetworkDriver> NetworkDevice<T> {
             mac: device.mac(),
             arp_translation_table: HashMap::new(),
             ip: Ipv4Addr::new(127, 0, 0, 1),
-            tx_queue: Some(tx_queue), tx_queue_sender,
+            tx_queue: Some(tx_queue),
+            tx_queue_sender,
             tcp_map: ConnectionMap::new(),
         }
     }
@@ -122,21 +123,25 @@ impl<T: NetworkDriver> NetworkDevice<T> {
             let tx_item = tx_queue.recv().boxed().fuse();
 
             match future::select(rx_item, tx_item).await {
-                future::Either::Left((item, _)) => if let Some(frame) = item {
-                    if let Some(frame) =  Ether2Frame::from_bytes(frame).ok() {
-                        if let Some(packet) = self.handle_packet(frame, &()).await {
-                            let _ = self.tx_sink.send(packet.into_bytes()).await;
-                            let _ = self.tx_sink.flush().await;
+                future::Either::Left((item, _)) => {
+                    if let Some(frame) = item {
+                        if let Some(frame) = Ether2Frame::from_bytes(frame).ok() {
+                            if let Some(packet) = self.handle_packet(frame, &()).await {
+                                let _ = self.tx_sink.send(packet.into_bytes()).await;
+                                let _ = self.tx_sink.flush().await;
+                            }
                         }
                     }
-                },
-                future::Either::Right((item, _)) => if let Some(frame) = item {
-                    if let Err(tx_send_err) = self.tx_sink.send(frame.into_bytes()).await {
-                        println!("net: tx_send_err {:?}", tx_send_err);
-                    }
+                }
+                future::Either::Right((item, _)) => {
+                    if let Some(frame) = item {
+                        if let Err(tx_send_err) = self.tx_sink.send(frame.into_bytes()).await {
+                            println!("net: tx_send_err {:?}", tx_send_err);
+                        }
 
-                    if let Err(tx_flush_err) = self.tx_sink.flush().await {
-                        println!("net: tx_flush_err {:?}", tx_flush_err);
+                        if let Err(tx_flush_err) = self.tx_sink.flush().await {
+                            println!("net: tx_flush_err {:?}", tx_flush_err);
+                        }
                     }
                 }
             }
@@ -149,15 +154,25 @@ impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
     type Output = Ether2Frame;
     type Context = ();
 
-    async fn handle_packet(&mut self, item: Ether2Frame, _: &Self::Context) -> Option<Self::Output> {
+    async fn handle_packet(
+        &mut self,
+        item: Ether2Frame,
+        _: &Self::Context,
+    ) -> Option<Self::Output> {
         let (data, frame_type) = match item.dtype() {
             EtherType::IPv4 => {
                 let packet = Ipv4::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item).await?.into_bytes(), EtherType::IPv4)
+                (
+                    self.handle_packet(packet, &item).await?.into_bytes(),
+                    EtherType::IPv4,
+                )
             }
             EtherType::ARP => {
                 let packet = ArpPacket::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item).await?.into_bytes(), EtherType::ARP)
+                (
+                    self.handle_packet(packet, &item).await?.into_bytes(),
+                    EtherType::ARP,
+                )
             }
             _ => {
                 return None;
@@ -214,15 +229,19 @@ impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
         let (data, packet_type) = match item.proto() {
             Ipv4Proto::ICMP => {
                 let packet = Icmp::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item).await?.into_bytes(), Ipv4Proto::ICMP)
+                (
+                    self.handle_packet(packet, &item).await?.into_bytes(),
+                    Ipv4Proto::ICMP,
+                )
             }
             Ipv4Proto::TCP => {
                 let packet = Tcp::from_bytes(item.data().to_vec()).ok()?;
-                (self.handle_packet(packet, &item).await?.into_bytes(), Ipv4Proto::TCP)
+                (
+                    self.handle_packet(packet, &item).await?.into_bytes(),
+                    Ipv4Proto::TCP,
+                )
             }
-            _ => {
-                return None
-            }
+            _ => return None,
         };
 
         let mut reply = Ipv4::zeroed();
@@ -267,10 +286,12 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
         match self.tcp_map.entry(conn_key) {
             Entry::Occupied(mut entry) => {
                 println!("trying to lock");
-                let mut lock = entry.get_mut().write().await;
-                println!("locked");
-                return lock.handle_packet(item, ctx);
-            },
+                let mut lock = entry.get_mut().lock().await;
+                println!("gonna handle");
+                let handled = lock.handle_packet(item, ctx);
+                println!("Handled");
+                return handled;
+            }
             Entry::Vacant(entry) => {
                 let key = item.dst();
                 let lock = OPEN_PORTS.read();
@@ -279,12 +300,14 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
                 if let Some(listener) = lock.get(&key) {
                     match TcpConnection::accept(item, ctx) {
                         Ok((conn, out)) => {
-                            let conn = Arc::new(crate::sync::RwLock::new(conn));
+                            let conn = Arc::new(crate::sync::Mutex::new(conn));
                             let stream = TcpStream {
-                                raw_connection: conn.clone()
+                                raw: conn.clone(),
                             };
 
-                            listener.send(stream).expect("failed to send key to listener");
+                            listener
+                                .send(stream)
+                                .expect("failed to send key to listener");
                             entry.insert(conn);
 
                             return Some(out);
@@ -293,7 +316,7 @@ impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
                     }
                 }
                 return None;
-            },
+            }
         }
     }
 }

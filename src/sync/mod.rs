@@ -1,17 +1,19 @@
 pub mod mpsc;
+pub mod mutex;
 pub mod rwlock;
 pub mod waker_set;
 
+pub use self::mutex::Mutex;
 pub use self::rwlock::RwLock;
 pub use alloc::sync::Arc;
 
 use core::cell::UnsafeCell;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
-use crossbeam_queue::SegQueue;
-use futures_util::task::AtomicWaker;
 use core::task::Context;
 use core::task::Poll;
+use crossbeam_queue::SegQueue;
+use futures_util::task::AtomicWaker;
 
 pub(crate) fn channel<T, S: Semaphore>(semaphore: S) -> (Tx<T, S>, Rx<T, S>) {
     let list = Arc::new(SegQueue::new());
@@ -24,7 +26,7 @@ pub(crate) fn channel<T, S: Semaphore>(semaphore: S) -> (Tx<T, S>, Rx<T, S>) {
         rx_fields: UnsafeCell::new(RxFields {
             list,
             rx_closed: false,
-        })
+        }),
     });
 
     (Tx::new(chan.clone()), Rx::new(chan.clone()))
@@ -119,7 +121,7 @@ impl<T, S> Clone for Tx<T, S> {
         self.inner.tx_count.fetch_add(1, Ordering::Relaxed);
 
         Tx {
-            inner: self.inner.clone()
+            inner: self.inner.clone(),
         }
     }
 }
@@ -144,7 +146,8 @@ impl<T, S: Semaphore> Rx<T, S> {
     }
 
     pub(crate) fn close(&mut self) {
-        let rx_fields = unsafe { &mut *Arc::get_mut_unchecked(&mut self.inner).rx_fields.get_mut() };
+        let rx_fields =
+            unsafe { &mut *Arc::get_mut_unchecked(&mut self.inner).rx_fields.get_mut() };
 
         if !rx_fields.rx_closed {
             rx_fields.rx_closed = true;
@@ -155,7 +158,8 @@ impl<T, S: Semaphore> Rx<T, S> {
     pub(crate) fn recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         macro_rules! try_recv {
             () => {
-                let rx_fields = unsafe { &mut *Arc::get_mut_unchecked(&mut self.inner).rx_fields.get_mut() };
+                let rx_fields =
+                    unsafe { &mut *Arc::get_mut_unchecked(&mut self.inner).rx_fields.get_mut() };
                 match rx_fields.list.pop() {
                     Some(value) => {
                         self.inner.semaphore.add_permit();
@@ -173,9 +177,10 @@ impl<T, S: Semaphore> Rx<T, S> {
         try_recv!();
 
         if self.inner.semaphore.is_idle() {
-            let rx_fields = unsafe { &mut *Arc::get_mut_unchecked(&mut self.inner).rx_fields.get_mut() };
+            let rx_fields =
+                unsafe { &mut *Arc::get_mut_unchecked(&mut self.inner).rx_fields.get_mut() };
             if rx_fields.rx_closed {
-                return Poll::Ready(None)
+                return Poll::Ready(None);
             }
         }
 

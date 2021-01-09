@@ -1,10 +1,14 @@
-use crate::sync::mpsc::*;
-use core::time::Duration;
-use crate::prelude::*;
-use crate::sync::Arc;
-use crate::sync::RwLock;
-use super::OPEN_PORTS;
 use super::StreamKey;
+use super::OPEN_PORTS;
+use crate::prelude::*;
+use crate::sync::mpsc::*;
+use crate::sync::Arc;
+use crate::sync::Mutex;
+
+use core::task::Context;
+use core::pin::Pin;
+use core::task::Poll;
+use core::future::Future;
 
 pub struct TcpListener {
     rx: UnboundedReceiver<StreamKey>,
@@ -23,9 +27,7 @@ impl TcpListener {
             ports.insert(port, tx);
         }
 
-        Ok(Self {
-            rx
-        })
+        Ok(Self { rx })
     }
 
     pub async fn accept(&mut self) -> Option<TcpStream> {
@@ -34,12 +36,41 @@ impl TcpListener {
 }
 
 pub struct TcpStream {
-    pub(crate) raw_connection: Arc<RwLock<super::TcpConnection>>,
+    pub(crate) raw: Arc<Mutex<super::TcpConnection>>,
 }
 
 impl TcpStream {
-    pub async fn read(&mut self, buffer: &mut [u8]) -> usize{
-        self.raw_connection.write().await.read(buffer)
+    pub async fn read(&mut self, buffer: &mut [u8]) -> usize {
+        struct ReadFuture<'a> {
+            inner: &'a TcpStream,
+            buffer: &'a mut [u8],
+        }
+
+        impl<'a> Future for ReadFuture<'a> {
+            type Output = usize;
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                match self.inner.raw.try_lock() {
+                    Some(mut guard) => {
+                        if !guard.has_data() {
+                            guard.register_waker(cx.waker().clone());
+                            return Poll::Pending;
+                        }
+
+                        return Poll::Ready(guard.read(self.buffer));
+                    },
+                    None => {
+                        self.inner.raw.register_waker(cx);
+                        return Poll::Pending;
+                    }
+                }
+            }
+        }
+
+        ReadFuture {
+            inner: self,
+            buffer,
+        }.await
     }
 
     pub fn write(&mut self, item: Vec<u8>) {

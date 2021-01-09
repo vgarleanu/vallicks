@@ -37,20 +37,25 @@ impl<T> UnboundedSender<T> {
 
         loop {
             if curr & 1 == 1 {
-                return false
+                return false;
             }
 
             if curr == usize::MAX ^ 1 {
                 panic!("overflowed ref count");
             }
 
-            match self.chan.semaphore().compare_exchange(curr, curr + 2, Ordering::AcqRel, Ordering::Acquire) {
+            match self.chan.semaphore().compare_exchange(
+                curr,
+                curr + 2,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => return true,
-                Err(e) => { curr = e },
+                Err(e) => curr = e,
             }
         }
     }
-    
+
     pub async fn closed(&self) {
         self.chan.closed().await
     }
