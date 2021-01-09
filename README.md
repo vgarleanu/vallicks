@@ -1,14 +1,15 @@
-# Vallicks - The Rust Unikernel powered by naked_std.
+# Vallicks
 
 ## What is Vallicks?
-Vallicks is a unikernel written in Rust for fun, designed to be used to create microservices that run in the cloud. Vallicks comes with a standard library that we call naked_std.
+Vallicks is a unikernel written in Rust for fun, designed to be used to create microservices that run in the cloud.
 
 ## Why another unikernel?
 I'm doing this simply for fun. But who knows what might come out out of it.
 
 ## Features
 - [x] proc-macros for easy bootstrapping
-- [x] Multi-threading
+- [ ] SMP
+- [x] Async
 - [ ] Drivers
     - [ ] Kernel
         - [x] VGA Text mode
@@ -25,46 +26,65 @@ I'm doing this simply for fun. But who knows what might come out out of it.
 - [ ] Network Stack
     - [x] ARP
     - [x] ICMP
-    - [ ] TCP
+    - [x] TCP (partial)
     - [ ] UDP
     - [ ] QUIC?
     - [ ] TLS
 
-## Usage - Simple TCP Server
+## Usage - Simple TCP Echo Server
 ```rust
 #![no_std]
 #![no_main]
 
-use vallicks::naked_std::*;
+use rtl8139_rs::*;
+use vallicks::async_::*;
+use vallicks::driver::Driver;
+use vallicks::net::socks::TcpListener;
+use vallicks::net::wire::ipaddr::Ipv4Addr;
+use vallicks::net::NetworkDevice;
 use vallicks::prelude::*;
 
-fn handle_client(mut stream: TcpStream) {
-    let mut data = [0u8; 50];
-    match stream.read(&mut data) {
-        Ok(size) => {
-            stream.write(&data[0..size]).unwrap();
-        }
-        Err(_) => {
-            println!("Error Occured: {:?}", stream.peer_addr().unwrap());
-            break;
+async fn netstack_init() {
+    let mut phy = RTL8139::probe().map(|x| RTL8139::preload(x)).unwrap();
+
+    if phy.init().is_err() {
+        panic!("failed to start phy");
+    }
+
+    let mut netdev = NetworkDevice::new(&mut phy);
+    netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
+
+    netdev.run_forever().await
+}
+
+
+async fn tcp_echo_server() {
+    let mut listener = TcpListener::bind(1234).expect("failed to bind to port 1234");
+
+    loop {
+        if let Some(mut conn) = listener.accept().await {
+            spawn(async move {
+                loop {
+                    let mut buf: [u8; 1000] = [0; 1000];
+                    let read = conn.read(&mut buf).await;
+                    if read > 0 {
+                        println!("{}", String::from_utf8_lossy(&buf[..read]));
+                        conn.write(&buf[..read]).await;
+                    }
+                }
+            });
         }
     }
 }
 
 #[entrypoint]
 fn main() {
-    let listener = TcpListener::bind("0.0.0.0:3333").unwrap();
+    println!("Ok");
+    let mut executor = executor::Executor::new();
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                thread::spawn(move || handle_client(stream));
-            }
-            Err(e) => {
-                println!("Error: {}", e);
-            }
-        }
-    }
+    executor.spawn(Task::new(netstack_init()));
+    executor.spawn(Task::new(tcp_echo_server()));
+    executor.run();
 }
 ```
 
@@ -76,8 +96,8 @@ come in many forms. You could:
   2. Ask for improved documentation as an [issue].
   3. Contribute code via [merge requests].
 
-[issue]: https://gitlab.com/vgarleanu/vallicks/issues
-[merge requests]: https://gitlab.com/vallicks/merge_requests
+[issue]: https://github.com/vgarleanu/vallicks/issues
+[merge requests]: https://github.com/vgarleanu/vallicks/merge_requests
 
 All pull requests are code reviewed and tested by the CI. Note that unless you
 explicitly state otherwise, any contribution intentionally submitted for

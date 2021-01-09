@@ -1,34 +1,20 @@
 //! Vallicks
-//! Vallicks is a x86_64 unikernel designed to be a drop-in replacement for rust's stdlib, offering
-//! a equivalent API that runs on bare metal without the overhead of a full blown operating system.
+//! Vallicks is a x86_64 unikernel designed to be used by applications that want to run on bare
+//! metal but dont want to write a lot of low level code. In Vallicks theres no need to write low
+//! level unsafe code as everything we might need is abstracted behind familiar APIs.
 //!
 //! With normal user space programs, the application runs naturally under an Operating System, be
 //! it Windows or Linux. With vallicks the App itself is the operating system. An advantage of this
-//! is that everything runs in Ring-0 removing a lot of the overhead of syscalls. Vallicks also
-//! comes bundled with only necessary drivers, all of which are feature gated, allowing the
-//! outputted image to be highly specialized to the running enviroment. Therefore one could say
-//! that this unikernel is more of bare metal runtime than anything else.
-//!
-//! This unikernel is also designed to be as extensible as possible. The kernel abstracts away all
-//! driver interaction between the standard library and the end user. Allowing the end coder to
-//! drop in whatever driver modules they want. Doing so wont require any alteration whatsoever to
-//! normal program code. In turn this project is very similar to IncludeOS.
-//!
-//! Vallicks comes in two parts. First you have `vallicks::*` itself which contains most/all
-//! critical kernel code, usually located in `vallicks::arch`, `vallicks::driver` and
-//! `vallicks::schedule`. Most of the kernel code is made private by default to minimize the risk
-//! of accidentally calling some critical function that can crash the entire kernel. The second
-//! part is what we call `naked_std`.
-//!
-//! naked_std is the standard library for this kernel which has the aim to be API wise almost
-//! identical to the rust standard library. This in turn allowing platform specific code to be
-//! easily ported to run under vallicks.
+//! is that everything runs in Ring-0 removing a lot of the overhead of syscalls. Vallicks offers
+//! clear abstractions and traits needed to implement various drivers such as network drivers. All
+//! of the driver must be async.
 //!
 //! Although it all sounds simple enough there are some caveats to using this library. One of them
 //! is that we cannot inform `rustc` that this is indeed a standard library. Because of this the
-//! main program has to manually import `vallicks::prelude::*` and `vallicks::naked_std`. Secondly
-//! we mut mark the application itself as `#[no_std]`. Lastly we need to mark the entry point for
-//! the application. The function can still be called `main`, but you have to place the attribute
+//! main program has to manually import `vallicks::prelude::*`.
+//!
+//! Secondly we mut mark the application itself as `#[no_std]`. Lastly we need to mark the entry point
+//! for the application. The function can still be called `main`, but you have to place the attribute
 //! macro `#[entrypoint]` above it.
 //!
 //! The entrypoint attribute macro does several things. First it informs the bootloader the
@@ -65,14 +51,7 @@
 //!     vallicks::init(boot_info);
 //!     println!("Booted in {}ms", timer::get_milis());
 //!
-//!     let main_thread = thread::spawn(|| {
-//!         println!("Hello world");
-//!     });
-//!
-//!     match main_thread.join() {
-//!         Ok(_) => exit(ExitCode::Success),
-//!         Err(_) => exit(ExitCode::Failed),
-//!     }
+//!     println!("Hello world");
 //!
 //!     halt();
 //! }
@@ -88,78 +67,56 @@
 //! `naked_std`. For example lets spin up a TcpServer:
 //! ```rust
 //! use vallicks::prelude::*; // import our prelude containing basic imports
-//! use naked_std::{
-//!     io::Write,
-//!     net::TcpListener,
-//!     thread,
-//! };
+//! use vallicks::async_::*; // stuff like our async executor.
+//! use rtl8139_rs::*; // RTL8139 nic driver
+//! use vallicks::driver::Driver;
+//! use vallicks::net::socks::TcpListener;
+//! use vallicks::net::wire::ipaddr::Ipv4Addr;
+//! use vallicks::net::NetworkDevice;
 //!
-//! fn main() {
-//!    let listener = TcpListener::bind("127.0.0.1:1234").unwrap();
-//!    println!("Server is listening");
-//!    for stream in listener.incoming() {
-//!        thread::spawn(|| {
-//!            let mut buf = [u8; 1024];
-//!            let mut stream = stream.unwrap();
-//!            let _ = stream.read(&mut buf).unwrap(); // read at most 1024 bytes into buffer
-//!            stream.write(&buf).unwrap(); // send em back
-//!        });
-//!    }
+//! // This function will initiate our NIC and start processing incoming data.
+//! async fn netstack_init() {
+//!     let mut phy = RTL8139::probe().map(|x| RTL8139::preload(x)).unwrap();
+//!
+//!     if phy.init().is_err() {
+//!         panic!("failed to init phy");
+//!     }
+//!
+//!     let mut netdev = NetworkDevice::new(&mut phy);
+//!     netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51)); // set our static ip
+//!     netdev.run_forever().await // forever process incoming data.
 //! }
-//! ```
 //!
-//! # Threading
-//! Within vallicks you can make full use of a equivalent thread api ported over from libstd,
-//! however it has a few caveats. Take this code for example:
-//! ```rust
-//! use vallicks::prelude::*;
-//! use naked_std::thread;
+//! async fn echo_server() {
+//!     let mut listener = TcpListener::bind(1234).expect("failed to bind to port 1234");
 //!
-//! struct Test(pub u32);
+//!     loop {
+//!         if let Some(mut conn) = listener.accept().await {
+//!             async_::spawn(async move {
+//!                 loop {
+//!                     let mut buf: [u8; 1000] = [0; 1000];
 //!
-//! impl Drop for Test {
-//!     fn drop(&mut self) {
-//!         println!("Dropped test");
+//!                     let read = conn.read(&mut buf).await;
+//!                     if read > 0 {
+//!                         println!("{}", String::from_utf8_lossy(&buf[..read]);
+//!                         conn.write(&buf[..read]).await;
+//!                     }
+//!                 }
+//!             });
+//!         }
 //!     }
 //! }
 //!
 //! fn main() {
-//!     let thread = thread::spawn(|| {
-//!         let test = Test(123);
-//!         panic!();
-//!     });
+//!     let mut executor = executor::Executor::new();
 //!
-//!     assert!(thread.join().is_err());
+//!     executor.spawn(Task::new(netstack_init()));
+//!     executor.spawn(Task::new(echo_server()));
+//!
+//!     executor.run();
 //! }
 //! ```
-//! Under the stdlib threading API, when the thread panics the stack will be unwinded and all the
-//! resources held would be dropped. Under vallicks such a thing is not possible, the scheduler
-//! will print out a RBP based backtrace for the thread, and will mark the thread as panicking.
-//! Because of this, something like Mutexes that can get poisoned are impossible, therefore you
-//! should handle panicking threads with care.
-//!
-//! # Unit testing
-//! Unit testing is a bit more difficult than in the standard library. Because of the enviroment it
-//! is quite difficult to do unit testing, however it can still be done. To have unittests your
-//! `main.rs` should look something like this:
-//! ```rust
-//! #![feature(custom_test_frameworks)]
-//! #![test_runner(vallicks::test_runner)]
-//! #![reexport_test_harness_main = "test_main"]
-//!
-//! use vallicks::prelude::*;
-//!
-//! #[unittest]
-//! fn trivial_test() {
-//!     assert!(1 == 1);
-//! }
-//!
-//! #[entrypoint]
-//! fn main() {}
-//! ```
-//! You must mark all unittests with the `unittest` attribute macro, which will generate some
-//! bootstrap code to make testing less of a pain.
-#![no_std] // LOL who the fuck needs a standard library, amirite?
+#![no_std]
 #![cfg_attr(test, no_main)]
 #![cfg_attr(test, allow(unused_variables))]
 #![cfg_attr(test, allow(dead_code))]
@@ -167,8 +124,6 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 #![allow(incomplete_features)]
-// All the features included in here are either needed for correct kernel operation or needed by
-// naked_std.
 #![feature(
     abi_x86_interrupt,
     alloc_error_handler,
@@ -246,10 +201,10 @@
     unboxed_closures,
     untagged_unions,
     unwind_attributes,
-    unsafe_cell_get_mut,
     vec_into_raw_parts,
     wake_trait
 )]
+
 extern crate alloc;
 
 /// The arch module holds the lowlevel initation functions to prepare the CPU for the kernel.
@@ -288,12 +243,6 @@ use x86_64::VirtAddr;
 
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("This library can only be used on the x86_64 architecture.");
-
-#[cfg(all(test, debug_assertions))]
-compile_warning!("Due to some performance issues awaiting to be debugged, not testing in release mode is unstable");
-
-#[cfg(debug_assertions)]
-compile_warning!("Due to some performance issues awaiting to be debugged, using channels not in release mode is unstable");
 
 /// Enum represents a qemu specific VM exit code which is used only in two cases. Within vallicks
 /// when running cargo xtest, which lets the test suite know if the test passed or not.
