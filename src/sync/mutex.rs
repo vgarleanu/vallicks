@@ -3,15 +3,14 @@ use core::future::Future;
 use core::ops::Deref;
 use core::ops::DerefMut;
 use core::pin::Pin;
+
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::Acquire;
 use core::sync::atomic::Ordering::Relaxed;
 use core::sync::atomic::Ordering::Release;
 use core::task::Context;
 use core::task::Poll;
-use core::task::Waker;
 
-use crate::prelude::*;
 use crate::sync::waker_set::WakerSet;
 
 pub struct Mutex<T> {

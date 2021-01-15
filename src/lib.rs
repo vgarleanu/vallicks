@@ -308,7 +308,7 @@ pub fn init(boot_info: &'static BootInfo) {
     unsafe { arch::interrupts::PICS.lock().initialize() };
     println!("pic: PIC init done...");
 
-    arch::pit::init();
+    arch::pit::init(1000); // start at 1khz
 
     {
         let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
