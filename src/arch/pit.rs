@@ -7,13 +7,10 @@ use x86_64::instructions::port::Port;
 const PIT_CH0: u16 = 0x40; // Channel 0 data port (read/write) (PIC TIMER)
 const PIT_REG: u16 = 0x43; // Mode/Command register (write only, a read is ignored)
 
-/// Represents the frequency of the PIT in Hz.
-/// i.e. 100hz means 100 ticks per second
-const TARGET_FREQ: u64 = 10_000; // Hz
 /// Represents the value we send to the PIT to set up the desired frequency
-const RELOAD_VALUE: u64 = 1193182 / TARGET_FREQ;
+const RELOAD_VALUE: u64 = 1_193_182;
 /// Tick divider for milis.
-const TICK_DIVIDER: u64 = 10;
+static mut TICK_FREQ: u64 = 18; //default of 18hz or every 55ms
 /// Total ticks since boot.
 static TICK: AtomicU64 = AtomicU64::new(0);
 /// Timeslot set by the async executor representing when we need to wake some tasks that are
@@ -21,13 +18,20 @@ static TICK: AtomicU64 = AtomicU64::new(0);
 static NOTIFY_AT: AtomicU64 = AtomicU64::new(0); // default to never
 
 /// Function sets the PIT up with the desired frequency.
-pub fn init() {
+pub fn init(freq: u16) {
+    let freq = freq.max(18) as u64;
+    let reload_value = (RELOAD_VALUE / freq).min(u16::MAX as u64) as u16;
+
+    println!("pit: freq={} reload_value={}", freq, reload_value);
+
     let mut p_pit1_ch0 = Port::new(PIT_CH0);
     let mut p_pit1_reg = Port::new(PIT_REG);
+
     unsafe {
+        TICK_FREQ = freq;
         p_pit1_reg.write(0x36u8);
-        p_pit1_ch0.write((RELOAD_VALUE & 0x00FF) as u8); // low
-        p_pit1_ch0.write(((RELOAD_VALUE & 0xFF00) >> 8) as u8); // high
+        p_pit1_ch0.write((reload_value & 0x00FF) as u8); // low
+        p_pit1_ch0.write(((reload_value & 0xFF00) >> 8) as u8); // high
     }
 
     println!("pit: PIT Setup done...");
@@ -46,12 +50,12 @@ pub fn tick() {
 
 /// Converts the ticks into seconds since boot
 pub fn get_secs() -> u64 {
-    TICK.load(Ordering::SeqCst) / TARGET_FREQ
+    unsafe { TICK.load(Ordering::SeqCst) / TICK_FREQ }
 }
 
 /// Converts tick into miliseconds since boot
 pub fn get_milis() -> u64 {
-    TICK.load(Ordering::SeqCst) / TICK_DIVIDER
+    unsafe { TICK.load(Ordering::SeqCst) / TICK_FREQ * 1000 }
 }
 
 /// return ticks
