@@ -43,6 +43,12 @@ type StreamKey = TcpStream;
 type OpenPorts = Arc<RwLock<HashMap<u16, UnboundedSender<StreamKey>>>>;
 
 lazy_static! {
+    pub static ref EthernetLayer: () = ();
+    pub static ref ArpLayer: () = ();
+    pub static ref IpLayer: () = ();
+    pub static ref IcmpLayer: () = ();
+    pub static ref TcpLayer: () = ();
+
     pub static ref OPEN_PORTS: OpenPorts = Arc::new(RwLock::new(HashMap::new()));
 }
 
