@@ -27,6 +27,7 @@ impl IpLayer {
             return None;
         }
 
+
         let (data, packet_type) = match packet.proto() {
             Ipv4Proto::ICMP => {
                 let pkt = Icmp::from_bytes(packet.data().to_vec()).ok()?;

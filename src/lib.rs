@@ -259,8 +259,6 @@ pub fn init(boot_info: &'static BootInfo) {
 
     x86_64::instructions::interrupts::enable();
     println!("int: interrupts enabled");
-
-    panic!("test panic");
 }
 
 /// Method informs Qemu of the status of the VM, allowing us to send error codes downstream. This

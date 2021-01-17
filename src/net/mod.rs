@@ -137,7 +137,7 @@ impl<T: NetworkDriver> NetworkDevice<T> {
                 future::Either::Left((item, _)) => {
                     if let Some(frame) = item {
                         if let Some(frame) = Ether2Frame::from_bytes(frame).ok() {
-                            if let Some(packet) = ETHERNET_LAYER.handle_rx(frame).await {
+                            if let Some(packet) = ETHERNET_LAYER.handle_rx(frame, self.device_mac).await {
                                 let _ = self.tx_sink.send(packet.into_bytes()).await;
                                 let _ = self.tx_sink.flush().await;
                             }

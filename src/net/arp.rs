@@ -24,11 +24,7 @@ impl Arp {
     }
 
     pub async fn handle_packet(&self, packet: ArpPacket, ctx: &Ether2Frame) -> Option<ArpPacket> {
-        if packet.tmac() != ctx.dst() {
-            if !self.local_arp_table.read().await.contains_key(&packet.tip()) {
-                return None;
-            }
-        }
+        let local_mac = self.local_arp_table.read().await.get(&packet.tip())?.clone();
 
         if packet.opcode() == ArpOpcode::ArpReply {
             self.arp_table.write().await.insert(packet.smac(), packet.sip());
@@ -36,8 +32,8 @@ impl Arp {
         }
 
         let mut reply = packet.clone();
-        reply.set_smac(packet.tmac());
         reply.set_tmac(reply.smac());
+        reply.set_smac(local_mac);
         reply.set_tip(reply.sip());
         reply.set_sip(packet.tip());
         reply.set_opcode(ArpOpcode::ArpReply);

@@ -37,7 +37,7 @@ def sh(st: str):
 
 
 if args.qemu:
-    sh("cargo bootimage --release")
+    sh("cargo bootimage")
 
     assert libkernel_path.exists()
 

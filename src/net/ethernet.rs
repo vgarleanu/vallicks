@@ -30,7 +30,7 @@ impl Ethernet {
     }
 
     /// Function handles an incoming packet.
-    pub async fn handle_rx(&self, ctx: Ether2Frame) -> Option<Ether2Frame> {
+    pub async fn handle_rx(&self, ctx: Ether2Frame, device_mac: Mac) -> Option<Ether2Frame> {
         let (data, frame_type) = match ctx.dtype() {
             EtherType::IPv4 => {
                 let pkt = Ipv4::from_bytes(ctx.data().to_vec()).ok()?;
@@ -53,7 +53,7 @@ impl Ethernet {
 
         let mut reply = Ether2Frame::zeroed();
         reply.set_dst(ctx.src());
-        reply.set_src(ctx.dst());
+        reply.set_src(device_mac);
         reply.set_dtype(frame_type);
         reply.set_data(data);
 
