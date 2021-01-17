@@ -1,16 +1,15 @@
-#![allow(missing_docs)]
-use crate::{
-    arch::gdt,
-    arch::memory::translate_addr,
-    arch::pit::tick,
-    prelude::{sync::Mutex, *},
-};
+use crate::arch::gdt;
+use crate::arch::memory::translate_addr;
+use crate::arch::pit::tick;
+
+use x86_64::registers::control::Cr2;
+use x86_64::structures::idt::InterruptDescriptorTable;
+use x86_64::structures::idt::InterruptStackFrame;
+use x86_64::structures::idt::PageFaultErrorCode;
+
 use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
-use x86_64::{
-    registers::control::Cr2,
-    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
-};
+use spin::Mutex;
 
 // Create a PIC instance masking all the interrupts for both pics, meaning all interrupts will be
 // sent and setting the offsets from 32 to 32 + 8

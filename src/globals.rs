@@ -1,7 +1,6 @@
 use crate::arch::memory::BootInfoFrameAllocator;
-use crate::prelude::sync::Mutex;
-use crate::prelude::*;
 use buddy_system_allocator::{Heap, LockedHeapWithRescue};
+use spin::Mutex;
 use x86_64::structures::paging::mapper::OffsetPageTable;
 
 /// This is our global default allocator, at the moment we only feature gate the

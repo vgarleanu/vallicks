@@ -127,81 +127,10 @@
 #![feature(
     abi_x86_interrupt,
     alloc_error_handler,
-    alloc_layout_extra,
-    allocator_api,
-    allocator_internals,
-    allow_internal_unsafe,
-    arbitrary_self_types,
-    array_error_internals,
-    asm,
-    associated_type_bounds,
-    atomic_mut_ptr,
-    box_syntax,
-    cfg_target_thread_local,
-    char_error_internals,
-    concat_idents,
-    const_raw_ptr_deref,
-    const_generics,
-    container_error_extra,
-    core_intrinsics,
     custom_test_frameworks,
-    decl_macro,
-    doc_cfg,
-    doc_keyword,
-    doc_masked,
-    doc_spotlight,
-    dropck_eyepatch,
-    duration_constants,
-    exact_size_is_empty,
-    exhaustive_patterns,
-    external_doc,
-    fn_traits,
-    format_args_nl,
-    generator_trait,
     get_mut_unchecked,
-    global_asm,
-    hashmap_internals,
-    int_error_internals,
-    int_error_matching,
-    integer_atomics,
-    lang_items,
-    link_args,
-    linkage,
-    log_syntax,
     map_first_last,
-    maybe_uninit_ref,
-    maybe_uninit_slice,
-    naked_functions,
-    needs_panic_runtime,
-    never_type,
-    nll,
-    option_expect_none,
-    panic_info_message,
-    panic_internals,
     prelude_import,
-    ptr_internals,
-    raw,
-    rustc_attrs,
-    rustc_private,
-    shrink_to,
-    slice_concat_ext,
-    slice_internals,
-    std_internals,
-    stdsimd,
-    stmt_expr_attributes,
-    str_internals,
-    test,
-    thread_local,
-    toowned_clone_into,
-    trace_macros,
-    try_reserve,
-    try_trait,
-    type_alias_impl_trait,
-    type_ascription,
-    unboxed_closures,
-    untagged_unions,
-    unwind_attributes,
-    vec_into_raw_parts,
     wake_trait
 )]
 
@@ -220,23 +149,24 @@ pub(crate) mod globals;
 /// This holds  our bare network primitives such as packet structures and parsers.
 pub mod net;
 /// This is the prelude for our kernel which holds the most basic required methods and macros.
-#[prelude_import]
 pub mod prelude;
 /// Holds synchronization primitives.
 pub mod sync;
+/// collection types
+pub mod collections {
+    pub use alloc::collections::*;
+    pub use hashbrown::*;
+}
 
 pub use crate::r#async as async_;
 
 #[allow(unused_imports)]
-use crate::{
-    arch::{
-        memory::{init as meminit, BootInfoFrameAllocator},
-        pci,
-        pit::get_milis,
-    },
-    driver::*,
-    prelude::{compile_warning, format, halt},
-};
+#[prelude_import]
+pub use crate::prelude::*;
+
+use crate::arch::memory::init as meminit;
+use crate::arch::memory::BootInfoFrameAllocator;
+
 use bootloader::BootInfo;
 use core::panic::PanicInfo;
 use x86_64::VirtAddr;
@@ -329,6 +259,8 @@ pub fn init(boot_info: &'static BootInfo) {
 
     x86_64::instructions::interrupts::enable();
     println!("int: interrupts enabled");
+
+    panic!("test panic");
 }
 
 /// Method informs Qemu of the status of the VM, allowing us to send error codes downstream. This

@@ -1,6 +1,6 @@
 [build]
 target = "target-x86_64.json"
-rustflags = ["-Cdebuginfo=2", "-Cforce-frame-pointers=yes"]
+rustflags = ["-Cdebuginfo=0", "-Cforce-frame-pointers=yes"]
 
 [unstable]
 build-std = ["core", "compiler_builtins", "alloc"]

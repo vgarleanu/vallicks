@@ -4,6 +4,14 @@ pub mod socks;
 pub mod tcp;
 /// Our packet structures and parsers
 pub mod wire;
+/// Ethernet layer handler
+pub mod ethernet;
+/// Arp Layer
+pub mod arp;
+/// Ip layer stuff
+pub mod ip;
+/// Icmp layer stuff
+pub mod icmp;
 
 pub use crate::net::wire as frames;
 
@@ -11,24 +19,23 @@ use crate::net::tcp::*;
 use crate::prelude::*;
 
 use crate::net::socks::TcpStream;
-use crate::net::wire::arp::{ArpOpcode, ArpPacket};
-use crate::net::wire::eth2::{Ether2Frame, EtherType};
-use crate::net::wire::icmp::{Icmp, IcmpType};
+use crate::net::wire::eth2::Ether2Frame;
 use crate::net::wire::ipaddr::Ipv4Addr;
-use crate::net::wire::ipv4::{Ipv4, Ipv4Proto};
-use crate::net::wire::mac::Mac;
-use crate::net::wire::tcp::Tcp;
-use crate::net::wire::tcp::TcpFlag;
 use crate::net::wire::Packet;
+use crate::net::wire::mac::Mac;
+
+use crate::net::ethernet::Ethernet;
+use crate::net::arp::Arp;
+use crate::net::ip::IpLayer;
+use crate::net::icmp::IcmpLayer;
+use crate::net::tcp::TcpLayer;
 
 use crate::driver::NetworkDriver;
 use crate::sync::mpsc::*;
 
 use alloc::sync::Arc;
-use core::convert::TryInto;
 use spin::RwLock;
 
-use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 
 use async_trait::async_trait;
@@ -43,11 +50,11 @@ type StreamKey = TcpStream;
 type OpenPorts = Arc<RwLock<HashMap<u16, UnboundedSender<StreamKey>>>>;
 
 lazy_static! {
-    pub static ref EthernetLayer: () = ();
-    pub static ref ArpLayer: () = ();
-    pub static ref IpLayer: () = ();
-    pub static ref IcmpLayer: () = ();
-    pub static ref TcpLayer: () = ();
+    pub static ref ETHERNET_LAYER: Ethernet = Ethernet::new();
+    pub static ref ARP_LAYER: Arp = Arp::new();
+    pub static ref IP_LAYER: IpLayer = IpLayer::new();
+    pub static ref ICMP_LAYER: IcmpLayer = IcmpLayer::new();
+    pub static ref TCP_LAYER: TcpLayer = TcpLayer::new();
 
     pub static ref OPEN_PORTS: OpenPorts = Arc::new(RwLock::new(HashMap::new()));
 }
@@ -73,26 +80,18 @@ pub struct NetworkDevice<T: NetworkDriver> {
     tx_sink: T::TxSink,
     /// Rx sink from which we can receive packets.
     rx_sink: Fuse<T::RxSink>,
-    /// The mac address of the device being wrapped.
-    mac: Mac,
-    /// The mac of the last device that talked to us.
-    last_dst_mac: Mac,
     /// Our ip address,
     ip: Ipv4Addr,
-    /// Translation table for arp
-    arp_translation_table: HashMap<Mac, Ipv4Addr>,
     /// Tx queue reader
     tx_queue: Option<UnboundedReceiver<Ether2Frame>>,
     /// Tx queue sender
     tx_queue_sender: UnboundedSender<Ether2Frame>,
-
-    // ** TCP STACK STARTS HERE **
-    /// TCP Connection map.
-    tcp_map: ConnectionMap,
+    /// Device mac
+    device_mac: Mac,
 }
 
 impl<T: NetworkDriver> NetworkDevice<T> {
-    pub fn new(device: &mut T) -> Self {
+    pub async fn new(device: &mut T) -> Self {
         // we acquire what are essentially two channels from the network driver.
         // rx_sink is for receiving ethernet ii frames from the NIC.
         // tx_sink is for sending them.
@@ -100,21 +99,24 @@ impl<T: NetworkDriver> NetworkDevice<T> {
         // these two channels are required so that we can receive packets that need to be sent to
         // the network.
         let (tx_queue_sender, tx_queue) = channel();
+        let device_mac = device.mac();
+
+        // Register this new network device.
+        ETHERNET_LAYER.register_tx(device_mac, tx_queue_sender.clone()).await;
 
         Self {
             rx_sink: rx_sink.fuse(),
             tx_sink,
-            mac: device.mac(),
-            last_dst_mac: [0, 0, 0, 0, 0, 0].into(),
-            arp_translation_table: HashMap::new(),
             ip: Ipv4Addr::new(127, 0, 0, 1),
             tx_queue: Some(tx_queue),
             tx_queue_sender,
-            tcp_map: ConnectionMap::new(),
+            device_mac,
         }
     }
 
-    pub fn set_ip(&mut self, ip: Ipv4Addr) {
+    pub async fn set_ip(&mut self, ip: Ipv4Addr) {
+        // Register our ip in the local arp table
+        ARP_LAYER.register_local(ip, self.device_mac).await;
         self.ip = ip;
     }
 
@@ -135,7 +137,7 @@ impl<T: NetworkDriver> NetworkDevice<T> {
                 future::Either::Left((item, _)) => {
                     if let Some(frame) = item {
                         if let Some(frame) = Ether2Frame::from_bytes(frame).ok() {
-                            if let Some(packet) = self.handle_packet(frame, &()).await {
+                            if let Some(packet) = ETHERNET_LAYER.handle_rx(frame).await {
                                 let _ = self.tx_sink.send(packet.into_bytes()).await;
                                 let _ = self.tx_sink.flush().await;
                             }
@@ -153,179 +155,6 @@ impl<T: NetworkDriver> NetworkDevice<T> {
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-#[async_trait]
-impl<T: NetworkDriver> ProcessPacket<Ether2Frame> for NetworkDevice<T> {
-    type Output = Ether2Frame;
-    type Context = ();
-
-    async fn handle_packet(
-        &mut self,
-        item: Ether2Frame,
-        _: &Self::Context,
-    ) -> Option<Self::Output> {
-        let (data, frame_type) = match item.dtype() {
-            EtherType::IPv4 => {
-                let packet = Ipv4::from_bytes(item.data().to_vec()).ok()?;
-                self.last_dst_mac = item.src();
-                (
-                    self.handle_packet(packet, &item).await?.into_bytes(),
-                    EtherType::IPv4,
-                )
-            }
-            EtherType::ARP => {
-                let packet = ArpPacket::from_bytes(item.data().to_vec()).ok()?;
-                (
-                    self.handle_packet(packet, &item).await?.into_bytes(),
-                    EtherType::ARP,
-                )
-            }
-            _ => {
-                return None;
-            }
-        };
-
-        let mut reply = Ether2Frame::zeroed();
-        reply.set_dst(item.src());
-        reply.set_src(self.mac);
-        reply.set_dtype(frame_type);
-        reply.set_data(data);
-
-        Some(reply)
-    }
-}
-
-#[async_trait]
-impl<T: NetworkDriver> ProcessPacket<ArpPacket> for NetworkDevice<T> {
-    type Output = ArpPacket;
-    type Context = Ether2Frame;
-
-    async fn handle_packet(&mut self, item: ArpPacket, _: &Self::Context) -> Option<Self::Output> {
-        if item.tmac() != self.mac && item.tip() != self.ip {
-            return None;
-        }
-
-        if item.opcode() == ArpOpcode::ArpReply {
-            self.arp_translation_table.insert(item.smac(), item.sip());
-            return None;
-        }
-
-        let mut reply = item.clone();
-        reply.set_tmac(reply.smac());
-        reply.set_smac(self.mac);
-        reply.set_tip(reply.sip());
-        reply.set_sip(self.ip);
-        reply.set_opcode(ArpOpcode::ArpReply);
-
-        Some(reply)
-    }
-}
-
-#[async_trait]
-impl<T: NetworkDriver> ProcessPacket<Ipv4> for NetworkDevice<T> {
-    type Output = Ipv4;
-    type Context = Ether2Frame;
-
-    async fn handle_packet(&mut self, item: Ipv4, _: &Self::Context) -> Option<Self::Output> {
-        // packet is malformed or not intended for us.
-        if item.dip() != self.ip {
-            return None;
-        }
-
-        let (data, packet_type) = match item.proto() {
-            Ipv4Proto::ICMP => {
-                let packet = Icmp::from_bytes(item.data().to_vec()).ok()?;
-                (
-                    self.handle_packet(packet, &item).await?.into_bytes(),
-                    Ipv4Proto::ICMP,
-                )
-            }
-            Ipv4Proto::TCP => {
-                let packet = Tcp::from_bytes(item.data().to_vec()).ok()?;
-                (
-                    self.handle_packet(packet, &item).await?.into_bytes(),
-                    Ipv4Proto::TCP,
-                )
-            }
-            _ => return None,
-        };
-
-        let mut reply = Ipv4::zeroed();
-        reply.set_proto(packet_type);
-        reply.set_sip(self.ip);
-        reply.set_dip(item.sip());
-        reply.set_id(item.id());
-        reply.set_flags(0x40);
-        reply.set_data(data);
-        reply.set_checksum();
-
-        Some(reply)
-    }
-}
-
-#[async_trait]
-impl<T: NetworkDriver> ProcessPacket<Icmp> for NetworkDevice<T> {
-    type Output = Icmp;
-    type Context = Ipv4;
-
-    async fn handle_packet(&mut self, item: Icmp, _: &Self::Context) -> Option<Self::Output> {
-        match item.packet_type() {
-            IcmpType::Echo => {
-                let mut reply = item.clone();
-                reply.set_packet_type(IcmpType::EchoReply);
-                reply.set_checksum();
-                Some(reply)
-            }
-            _ => None,
-        }
-    }
-}
-
-#[async_trait]
-impl<T: NetworkDriver> ProcessPacket<Tcp> for NetworkDevice<T> {
-    type Output = Tcp;
-    type Context = Ipv4;
-
-    async fn handle_packet(&mut self, item: Tcp, ctx: &Self::Context) -> Option<Self::Output> {
-        let conn_key = (ctx.sip(), item.src(), ctx.dip(), item.dst());
-
-        match self.tcp_map.entry(conn_key) {
-            Entry::Occupied(mut entry) => {
-                let mut lock = entry.get_mut().lock().await;
-                return lock.handle_packet(item, ctx);
-            }
-            Entry::Vacant(entry) => {
-                let key = item.dst();
-                let lock = OPEN_PORTS.read();
-
-                // we are listening on dst port
-                if let Some(listener) = lock.get(&key) {
-                    match TcpConnection::accept(
-                        item,
-                        ctx,
-                        self.mac.clone(),
-                        self.last_dst_mac.clone(),
-                        self.tx_queue_sender.clone(),
-                    ) {
-                        Ok((conn, out)) => {
-                            let conn = Arc::new(crate::sync::Mutex::new(conn));
-                            let stream = TcpStream { raw: conn.clone() };
-
-                            listener
-                                .send(stream)
-                                .expect("failed to send key to listener");
-                            entry.insert(conn);
-
-                            return Some(out);
-                        }
-                        Err(e) => return e,
-                    }
-                }
-                return None;
             }
         }
     }

@@ -12,15 +12,76 @@ use super::wire::Packet;
 use crate::prelude::*;
 use crate::sync::mpsc::UnboundedReceiver;
 use crate::sync::mpsc::UnboundedSender;
+use crate::sync::RwLock;
+use crate::net::socks::TcpStream;
 use crate::sync::Mutex;
 
 use core::task::Waker;
 
 use alloc::sync::Arc;
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 
 pub type ConnectionKey = (Ipv4Addr, u16, Ipv4Addr, u16); // sip, sport, dip, dport
 pub type ConnectionMap = HashMap<ConnectionKey, Arc<Mutex<TcpConnection>>>;
+
+pub struct TcpLayer {
+    connections: RwLock<ConnectionMap>,
+}
+
+impl TcpLayer {
+    pub fn new() -> Self {
+        Self {
+            connections: RwLock::new(ConnectionMap::new()),
+        }
+    }
+
+    pub async fn handle_packet(&self, packet: Tcp, ctx: &Ipv4) -> Option<Tcp> {
+        let conn_key = (ctx.sip(), packet.src(), ctx.dip(), packet.dst());
+
+        let local_mac = super::ARP_LAYER.resolve_ip_local(ctx.dip()).await.expect("failed to get local mac");
+        let mac = super::ARP_LAYER.resolve_ip(ctx.sip()).await.expect("failed to resolve remote ip");
+
+        match self.connections.write().await.entry(conn_key) {
+            Entry::Occupied(mut entry) => {
+                let mut lock = entry.get_mut().lock().await;
+                return lock.handle_packet(packet, ctx);
+            }
+            Entry::Vacant(entry) => {
+                let key = packet.dst();
+                let lock = super::OPEN_PORTS.read();
+
+                // we are listening on dst port
+                if let Some(listener) = lock.get(&key) {
+                    match TcpConnection::accept(
+                        packet,
+                        ctx,
+                        local_mac,
+                        mac,
+                    ) {
+                        Ok((conn, out)) => {
+                            let conn = Arc::new(crate::sync::Mutex::new(conn));
+                            let stream = TcpStream { raw: conn.clone() };
+
+                            listener
+                                .send(stream)
+                                .expect("failed to send key to listener");
+                            entry.insert(conn);
+
+                            return Some(out);
+                        }
+                        Err(e) => return e,
+                    }
+                }
+                return None;
+            }
+        }
+    }
+
+    pub async fn handle_tx(&self, packet: Tcp, sip: Ipv4Addr, dip: Ipv4Addr) {
+        super::IP_LAYER.handle_tx(packet.as_bytes(), Ipv4Proto::TCP, dip, sip).await;
+    }
+}
 
 pub struct TcpConnection {
     /// Current state of this tcp connection
@@ -53,8 +114,6 @@ pub struct TcpConnection {
     data: Vec<u8>,
     /// Waker for task waiting on data.
     waker: Option<Waker>,
-    /// Tx queue sender
-    tx_sender: UnboundedSender<Ether2Frame>,
     /// Last ipv4 packet id
     last_ipv4_id: u16,
     /// Mac of this device.
@@ -69,7 +128,6 @@ impl TcpConnection {
         ip: &Ipv4,
         mac: Mac,
         dst_mac: Mac,
-        tx_sender: UnboundedSender<Ether2Frame>,
     ) -> Result<(Self, Tcp), Option<Tcp>> {
         // First check for a RST
         if tcp.is_rst() {
@@ -110,7 +168,6 @@ impl TcpConnection {
             quad: (ip.sip(), tcp.src(), ip.dip(), tcp.dst()),
             data: Vec::new(),
             waker: None,
-            tx_sender,
             last_ipv4_id: ip.id(),
             mac,
             dst_mac,
@@ -392,9 +449,7 @@ impl TcpConnection {
         packet
     }
 
-    // FIXME: Not quite optimal as we are constructing lower frames manually rather than just tcp
-    // datagrams.
-    pub fn write(&mut self, item: &[u8]) {
+    pub async fn write(&mut self, item: &[u8]) {
         self.last_ipv4_id += 1;
 
         let mut packet = Tcp::zeroed();
@@ -410,24 +465,7 @@ impl TcpConnection {
 
         self.snd_nxt += item.len() as u32;
 
-        let mut ipv4 = Ipv4::zeroed();
-        ipv4.set_proto(Ipv4Proto::TCP);
-        ipv4.set_dip(self.quad.0);
-        ipv4.set_sip(self.quad.2);
-        ipv4.set_id(self.last_ipv4_id);
-        ipv4.set_flags(0x40);
-        ipv4.set_data(packet.into_bytes());
-        ipv4.set_checksum();
-
-        let mut ether = Ether2Frame::zeroed();
-        ether.set_dst(self.dst_mac);
-        ether.set_src(self.mac);
-        ether.set_dtype(EtherType::IPv4);
-        ether.set_data(ipv4.into_bytes());
-
-        self.tx_sender
-            .send(ether)
-            .expect("failed to write packet to netdev");
+        super::TCP_LAYER.handle_tx(packet, self.quad.2, self.quad.0).await;
     }
 
     pub fn has_data(&self) -> bool {

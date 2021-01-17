@@ -19,7 +19,7 @@ async fn netstack_init() {
         panic!("failed to start phy");
     }
 
-    let mut netdev = NetworkDevice::new(&mut phy);
+    let mut netdev = NetworkDevice::new(&mut phy).await;
     netdev.set_ip(Ipv4Addr::new(192, 168, 100, 51));
 
     netdev.run_forever().await
@@ -95,7 +95,7 @@ fn main() {
     executor.spawn(Task::new(netstack_init()));
     executor.spawn(Task::new(tcp_echo_server()));
     */
-    executor.spawn(Task::new(test_read(lock.clone())));
-    executor.spawn(Task::new(test_write(lock.clone())));
+//    executor.spawn(Task::new(test_read(lock.clone())));
+ //   executor.spawn(Task::new(test_write(lock.clone())));
     executor.run();
 }
