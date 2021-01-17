@@ -1,10 +1,15 @@
 use super::wire::arp::ArpPacket;
 use super::wire::arp::ArpOpcode;
 use super::wire::eth2::Ether2Frame;
-use crate::sync::RwLock;
 use super::wire::mac::Mac;
 use super::wire::ipaddr::Ipv4Addr;
+use super::wire::Packet;
+use super::wire::eth2::EtherType;
+
+use core::time::Duration;
+use crate::async_::Sleep;
 use crate::collections::HashMap;
+use crate::sync::RwLock;
 
 /// Struct represents the Arp layer of our network stack. As such all arp packets are proccessed by
 /// a static instance of this struct.
@@ -42,13 +47,44 @@ impl Arp {
         self.local_arp_table.write().await.insert(lip, lmac);
     }
 
-    pub async fn resolve_ip(&self, ip: Ipv4Addr) -> Option<Mac> {
-        // TODO: resolve ip by looking it up in our translation table, if its not there, send a
-        // query to the network.
-        self.arp_table.read().await.iter().find(|(_, x)| **x == ip).map(|(mac, _)| *mac)
+    pub async fn resolve_ip(&self, ip: Ipv4Addr, local: Ipv4Addr) -> Option<Mac> {
+        // First check our local tables for whether we already have an entry.
+        self.arp_table.read().await.iter().find(|(_, x)| **x == ip).map(|(mac, _)| *mac);
+        // Get our local mac
+        let local_mac = self.local_arp_table.read().await.get(&local)?.clone();
+        
+        for _ in 0usize..5 {
+            self.arp_query(ip, local, local_mac).await;
+
+            Sleep::new(Duration::from_millis(1000)).await;
+
+            if let Some(x) = self.arp_table.read().await.iter().find(|(_, x)| **x == ip).map(|(mac, _)| *mac) {
+                return Some(x);
+            }
+        }
+
+        // TODO: If we get here that means we have timeouted and we must notify the client maybe??
+        None
     }
 
     pub async fn resolve_ip_local(&self, ip: Ipv4Addr) -> Option<Mac> {
         self.local_arp_table.read().await.iter().find(|(x, _)| **x == ip).map(|(_, mac)| *mac)
+    }
+
+    pub async fn arp_query(&self, ip: Ipv4Addr, local_ip: Ipv4Addr, local_mac: Mac) {
+        let mut request = ArpPacket::zeroed();
+        request.set_tmac(Mac::multicast());
+        request.set_smac(local_mac);
+        request.set_tip(ip);
+        request.set_sip(local_ip);
+        request.set_opcode(ArpOpcode::ArpRequest);
+
+        let mut ethpacket = Ether2Frame::zeroed();
+        ethpacket.set_dst(Mac::multicast());
+        ethpacket.set_src(local_mac);
+        ethpacket.set_dtype(EtherType::ARP);
+        ethpacket.set_data(request.as_ref());
+
+        super::ETHERNET_LAYER.handle_tx(ethpacket).await;
     }
 }

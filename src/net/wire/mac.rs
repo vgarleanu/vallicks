@@ -8,6 +8,14 @@ pub struct Mac {
     inner: [u8; 6],
 }
 
+impl Mac {
+    pub fn multicast() -> Self {
+        Self {
+            inner: [0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        }
+    }
+}
+
 impl From<&[u8]> for Mac {
     fn from(data: &[u8]) -> Self {
         Self {

@@ -1,5 +1,4 @@
 use crate::collections::HashMap;
-use crate::sync::Arc;
 use crate::sync::RwLock;
 use crate::sync::mpsc::UnboundedSender;
 use super::wire::eth2::Ether2Frame;
