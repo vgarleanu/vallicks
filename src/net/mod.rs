@@ -38,7 +38,6 @@ use spin::RwLock;
 
 use hashbrown::HashMap;
 
-use async_trait::async_trait;
 use futures_util::future;
 use futures_util::future::FutureExt;
 use futures_util::sink::SinkExt;
@@ -57,22 +56,6 @@ lazy_static! {
     pub static ref TCP_LAYER: TcpLayer = TcpLayer::new();
 
     pub static ref OPEN_PORTS: OpenPorts = Arc::new(RwLock::new(HashMap::new()));
-}
-
-/// Trait used for parsing a packet of type `Item`. The aim of this is that in the end our network
-/// stack visually looks like a state machine as well, with the idea that packets go down the
-/// callstack in an obvious fashion.
-#[async_trait]
-trait ProcessPacket<Item> {
-    /// Output packet.
-    type Output: Packet;
-    /// Represents a context that gets passed down to packet handler. This context is essentially the
-    /// ethernet 2 frame, but in some cases could be the ipv4 packet.
-    type Context: Packet;
-
-    /// Process packet of type `Item`. This method can return an Option depending on whether we
-    /// want to send a packet as a reply or not.
-    async fn handle_packet(&mut self, item: Item, ctx: &Self::Context) -> Option<Self::Output>;
 }
 
 pub struct NetworkDevice<T: NetworkDriver> {

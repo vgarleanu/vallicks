@@ -44,12 +44,9 @@ async fn tcp_echo_server() {
 
 #[entrypoint]
 fn main() {
-    println!("Ok");
     let mut executor = executor::Executor::new();
 
     executor.spawn(Task::new(netstack_init()));
     executor.spawn(Task::new(tcp_echo_server()));
-//    executor.spawn(Task::new(test_read(lock.clone())));
- //   executor.spawn(Task::new(test_write(lock.clone())));
     executor.run();
 }

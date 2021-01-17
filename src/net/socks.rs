@@ -75,6 +75,6 @@ impl TcpStream {
     }
 
     pub async fn write(&mut self, item: &[u8]) {
-        self.raw.lock().await.write(item);
+        self.raw.lock().await.write(item).await;
     }
 }

@@ -23,13 +23,10 @@ impl Arp {
         }
     }
 
-    pub async fn handle_packet(&self, packet: ArpPacket, ctx: &Ether2Frame) -> Option<ArpPacket> {
+    pub async fn handle_packet(&self, packet: ArpPacket, _: &Ether2Frame) -> Option<ArpPacket> {
         let local_mac = self.local_arp_table.read().await.get(&packet.tip())?.clone();
 
-        if packet.opcode() == ArpOpcode::ArpReply {
-            self.arp_table.write().await.insert(packet.smac(), packet.sip());
-            return None;
-        }
+        self.arp_table.write().await.insert(packet.smac(), packet.sip());
 
         let mut reply = packet.clone();
         reply.set_tmac(reply.smac());

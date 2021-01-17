@@ -62,7 +62,7 @@ impl Ethernet {
 
     /// Function can be used to send data out.
     pub async fn handle_tx(&self, packet: Ether2Frame) {
-        if let Some(lock) = self.tx_queue_map.read().await.get(&packet.dst()) {
+        if let Some(lock) = self.tx_queue_map.read().await.get(&packet.src()) {
             lock.send(packet).expect("eth2: failed to write to netdev");
         }
     }

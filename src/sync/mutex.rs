@@ -100,3 +100,5 @@ impl<'a, T: ?Sized + 'a> Drop for MutexGuard<'a, T> {
         self.wakers.notify_one();
     }
 }
+
+unsafe impl<T: Send> Send for MutexGuard<'_, T> {}
